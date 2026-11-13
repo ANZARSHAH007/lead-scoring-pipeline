@@ -17,11 +17,11 @@ A feature is admissible only if its value is known at scoring time.
 | Column group | Columns | Admissible | Reason |
 | --- | --- | --- | --- |
 | IDs | `Prospect ID`, `Lead Number` | **No** — keep `Prospect ID` to join results only | identifiers carry no signal |
-| Source | `Lead Origin`, `Lead Source` | **Yes** | known on arrival |
+| Source | `Lead Origin`, `Lead Source` | **Yes, with one caveat** | known on arrival, but `Lead Origin = Lead Add Form` converts at 92.5% across 718 leads — T-203 decides whether that level is a record-keeping artefact rather than a cause |
 | Website behaviour | `TotalVisits`, `Total Time Spent on Website`, `Page Views Per Visit` | **Yes** | pre-contact; expected strongest signals |
 | Form answers | `Specialization`, `What is your current occupation`, `What matters most to you in choosing a course`, `City`, `Country`, `How did you hear about X Education` | **Yes, with care** | self-reported at submission; `"Select"` → missing, rare values grouped |
 | Contact preferences | `Do Not Email`, `Do Not Call` | **Yes** | known on arrival |
-| Ad / opt-in flags | `Search`, `Magazine`, `Newspaper Article`, `X Education Forums`, `Newspaper`, `Digital Advertisement`, `Through Recommendations`, `Receive More Updates About Our Courses`, `Update me on Supply Chain Content`, `Get updates on DM Content`, `I agree to pay the amount through cheque`, `A free copy of Mastering The Interview` | **Check first** | drop any that is near-constant — no variance, no signal |
+| Ad / opt-in flags | `Search`, `Magazine`, `Newspaper Article`, `X Education Forums`, `Newspaper`, `Digital Advertisement`, `Through Recommendations`, `Receive More Updates About Our Courses`, `Update me on Supply Chain Content`, `Get updates on DM Content`, `I agree to pay the amount through cheque`, `A free copy of Mastering The Interview` | **No — resolved 2026-11-13** | measured: all 12 are near-constant (one value covers ≥ 95% of rows), so none can discriminate. Dropped. |
 | Activity | `Last Activity`, `Last Notable Activity` | **Test both ways** | some values may encode sales contact; train with and without, report both |
 | Sales-filled | `Tags`, `Lead Quality`, `Asymmetrique Activity Index`, `Asymmetrique Profile Index`, `Asymmetrique Activity Score`, `Asymmetrique Profile Score` | **No** | written after a rep works the lead; they leak the outcome |
 | Mostly empty | `Lead Profile` (74.2% empty counting `"Select"`) | **Drop** | too sparse to learn from |

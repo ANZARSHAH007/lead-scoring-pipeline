@@ -68,9 +68,14 @@ lead-scoring-pipeline/
 ├── .github/workflows/ci.yml     lint, test, build, gate              [Phase 6]
 ├── data/
 │   └── raw/                     Leads.csv goes here — git-ignored
-├── notebooks/
-│   ├── 01_eda.ipynb             exploration only                     [Phase 2]
-│   └── 02_leakage_audit.ipynb   the per-column decision record       [Phase 2]
+├── scripts/
+│   ├── check_data.py            verifies the downloaded dataset      [Phase 1]
+│   ├── eda.py                   writes reports/01_eda.md             [Phase 2]
+│   └── leakage_audit.py         writes reports/02_leakage_audit.md   [Phase 2]
+├── reports/                     generated analysis, committed        [Phase 2]
+│   ├── 01_eda.md
+│   ├── 02_leakage_audit.md
+│   └── figures/*.png
 ├── src/leadscore/
 │   ├── config.py                feature lists, paths, seed, thresholds [Phase 1]
 │   ├── schema.py                pandera contract on the raw CSV       [Phase 2]

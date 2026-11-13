@@ -151,6 +151,42 @@ Two sections. **Decisions** are permanent: each records what was chosen, what wa
 
 ---
 
+### D-014 — Chart marks use #2563EB, not the UI primary
+**Date:** 2026-11-13 · **Status:** accepted
+
+**Context.** The design system's primary is `#1E40AF`. Run through the palette validator, it
+**fails the lightness band** for data marks (L 0.424, outside 0.43–0.77): it is a good colour
+for text and chrome and too dark for a filled mark.
+
+**Decision.** Chart marks use `#2563EB` (first series) and `#D97706` (second series, the
+design system's accent unchanged). UI chrome keeps `#1E40AF`. The pair passes all six checks:
+lightness band, chroma floor, CVD separation (ΔE 32.3 protan, 29.3 tritan), normal-vision
+separation (ΔE 38.3) and contrast against the surface.
+
+**Why it is written down.** The validator was run rather than the colours eyeballed, and the
+next person to add a chart needs to know the chart palette deliberately differs from the UI
+palette instead of "fixing" it back. Tokens live in `src/leadscore/plotting.py`.
+
+---
+
+### D-015 — Analysis ships as markdown reports, not notebooks
+**Date:** 2026-11-13 · **Status:** accepted
+
+**Context.** The roadmap named `notebooks/01_eda.ipynb` and `notebooks/02_leakage_audit.ipynb`.
+
+**Decision.** The analysis is a script in `scripts/` that writes a markdown report and PNG
+figures into `reports/`, both committed.
+
+**Why.** A committed notebook is JSON with embedded image blobs: it cannot be reviewed in a
+diff, and the owner reviews every change before it enters history. A markdown report reads in
+any editor's preview, and re-running the script reproduces it exactly. Notebooks stay useful
+for throwaway exploration; they are just not the artefact.
+
+**Rejected.** Committing executed notebooks (unreviewable), and stripping outputs before
+commit (then the analysis is not in the repo at all).
+
+---
+
 ## Changelog
 
 ### 2026-11-13 — Planning (Phase 0)
@@ -216,6 +252,31 @@ The real `Leads.csv` is on disk and `scripts/check_data.py` exits 0. **Phase 2 i
 2. **`City` is 39.7% effectively missing** (15.4% blank plus 24.3% `Select`) and was not in the
    original figures at all — emptier than `Specialization`. It is an admissible feature, so T-201
    decides whether it earns its place.
+
+### 2026-11-13 — T-201: EDA, and three findings that change the plan
+
+`scripts/eda.py` writes `reports/01_eda.md` and four figures. Run on the real file.
+
+**1. All 12 ad and opt-in flags are near-constant.** One value covers at least 95% of rows in
+every one of them, so none can discriminate. docs/02 said "check first"; the answer is drop all
+12. The admissible feature list falls from 27 columns to 15.
+
+**2. Time on website is U-shaped, not rising.** Leads with no recorded visit convert at 42.0%,
+*above* the 38.5% average; among leads that did browse, conversion bottoms out near 13% in the
+1–84 second band and climbs to ~71% above 784 seconds. Two consequences: the one-rule baseline
+(sort by time on site) ranks the zero-time group last even though it converts above average, so
+it is a weaker bar than it looked; and logistic regression cannot fit a U-shape in a raw numeric
+feature, so it needs the column binned or a zero indicator, while LightGBM handles it natively.
+That may turn out to be most of the gap between them (T-304).
+
+**3. `Lead Origin = Lead Add Form` converts at 92.5% across 718 leads.** A level that almost
+always converts usually means the row was created *because* something already happened. T-203
+has to decide whether it is a record-keeping artefact. Flagged, not dropped.
+
+Also: the chart palette was validated rather than eyeballed, which rejected the UI primary for
+data marks (D-014), and the analysis ships as markdown instead of notebooks (D-015).
+
+**Not done:** T-202 (pandera schema) and T-203 (the leakage audit itself) are next.
 
 ### Next entry
 

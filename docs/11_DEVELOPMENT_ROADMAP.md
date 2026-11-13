@@ -39,7 +39,7 @@ Dependencies use task IDs. Priority: **P0** = P1 fails without it, **P1** = plan
 
 | ID | Task | Feature | Depends | Pri | Expected outcome | Acceptance criterion | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-201 | `notebooks/01_eda.ipynb` — missing values, `"Select"`, distributions, conversion by source | M2 | T-107 | P0 | the data is understood, charts saved | missing-value rates match doc 02's figures | Not started |
+| T-201 | `scripts/eda.py` → `reports/01_eda.md` — missingness, near-constant columns, numeric profile, conversion by origin and source | M2 | T-107 | P0 | the data is understood, 4 charts saved | **Done (verified)** 2026-11-13 — report + 4 figures generated; 3 findings changed the plan |
 | T-202 | `src/leadscore/schema.py` — pandera contract | M2 | T-201 | P0 | bad data fails loudly | three corruption tests produce three distinct errors | Not started |
 | T-203 | `notebooks/02_leakage_audit.ipynb` — a yes/no decision per column, with reason | M2 | T-201 | **P0** | the audit record doc 02 promises | every one of the 37 columns is classified | Not started |
 | T-204 | Quantify the leakage gap: logistic regression with vs without sales columns | M2 | T-203 | P0 | the number the README's last row reports | both ROC-AUCs logged to MLflow | Not started |
