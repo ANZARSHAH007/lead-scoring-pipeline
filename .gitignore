@@ -1,0 +1,40 @@
+# data — never commit the dataset or the prediction log
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/README.md
+data/*.db
+data/interim/
+data/processed/
+
+# models — built artifacts, produced by `make train` or CI
+models/*
+!models/.gitkeep
+
+# experiment tracking
+mlruns/
+mlartifacts/
+
+# secrets
+.env
+.env.local
+.env.*.local
+kaggle.json
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+htmlcov/
+.coverage
+
+# streamlit
+.streamlit/secrets.toml
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

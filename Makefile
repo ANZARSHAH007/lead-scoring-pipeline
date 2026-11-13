@@ -1,0 +1,67 @@
+# Lead Scoring Pipeline — one entry point per action.
+#
+# `make` is not installed on the owner's Windows machine, so every target below is a single
+# line that can be pasted into a shell by hand; the equivalents are listed in the README.
+# CI runs on Linux, where make exists.
+
+PY ?= python
+VENV ?= .venv
+ifeq ($(OS),Windows_NT)
+	BIN := $(VENV)/Scripts
+else
+	BIN := $(VENV)/bin
+endif
+
+.PHONY: help venv install install-min lint format test test-cov train serve dashboard docker clean
+
+help:
+	@echo "venv         create $(VENV) with $(PY)"
+	@echo "install      install the project and dev tools (full ML stack, large)"
+	@echo "install-min  install only what the current phase needs (config + tests)"
+	@echo "lint         ruff check"
+	@echo "format       ruff format"
+	@echo "test         pytest"
+	@echo "test-cov     pytest with coverage"
+	@echo "train        train a model, write models/ artifacts   [Phase 3+]"
+	@echo "serve        run the API on :8000                     [Phase 5+]"
+	@echo "dashboard    run the Streamlit dashboard on :8501     [Phase 6+]"
+	@echo "docker       build and run both services              [Phase 6+]"
+
+venv:
+	$(PY) -m venv $(VENV)
+	$(BIN)/python -m pip install --upgrade pip
+
+# Full install. Pulls lightgbm, mlflow, shap, streamlit and friends — hundreds of MB.
+install:
+	$(BIN)/python -m pip install -e ".[dev]"
+
+# Phase 1 subset: enough to import the config and run the suite, nothing more.
+install-min:
+	$(BIN)/python -m pip install "pydantic>=2.9" "pydantic-settings>=2.5" "pytest>=8.3" "ruff>=0.7"
+
+lint:
+	$(BIN)/ruff check src tests scripts
+
+format:
+	$(BIN)/ruff format src tests scripts
+
+test:
+	$(BIN)/python -m pytest
+
+test-cov:
+	$(BIN)/python -m pytest --cov=leadscore --cov-report=term-missing
+
+train:
+	$(BIN)/python -m leadscore.train
+
+serve:
+	$(BIN)/python -m uvicorn leadscore.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+dashboard:
+	$(BIN)/python -m streamlit run dashboard/app.py
+
+docker:
+	docker compose up --build
+
+clean:
+	rm -rf .pytest_cache .ruff_cache **/__pycache__ .coverage

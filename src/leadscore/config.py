@@ -1,0 +1,266 @@
+"""Single source of truth for paths, thresholds, the random seed and the feature lists.
+
+Nothing else in the pipeline may hardcode a threshold, a path or a column name. Two kinds of
+setting live here, and they are deliberately different kinds of thing:
+
+* **Column groups** are module constants. They encode the leakage decision recorded in
+  docs/02_PRODUCT_REQUIREMENTS.md, which is a business rule, not a deployment knob. Nobody
+  gets to re-admit a leaking column by setting an environment variable.
+* **Everything else** is a :class:`Settings` field, read from the environment with the
+  ``LEADSCORE_`` prefix and a documented default (see ``.env.example``).
+
+See docs/03_FEATURE_BREAKDOWN.md (M1) and CLAUDE.md.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# ---------------------------------------------------------------------------
+# The raw dataset's shape. Checked by schema.py (Phase 2) so drift is loud.
+# ---------------------------------------------------------------------------
+
+TARGET = "Converted"
+EXPECTED_ROWS = 9_240
+EXPECTED_COLUMNS = 37
+EXPECTED_TARGET_RATE = 0.3854
+
+#: A form default, not an answer. Treated as missing everywhere it appears.
+SELECT_PLACEHOLDER = "Select"
+
+# ---------------------------------------------------------------------------
+# Column groups. Admissibility comes from one rule: a column may be used only if its
+# value is known at the moment the lead is scored. docs/02 holds the per-column reasoning.
+# ---------------------------------------------------------------------------
+
+#: Identifiers. `Prospect ID` is kept to join results back, never as a feature.
+ID_COLUMNS: tuple[str, ...] = (
+    "Prospect ID",
+    "Lead Number",
+)
+
+#: Known when the lead arrives.
+SOURCE_FEATURES: tuple[str, ...] = (
+    "Lead Origin",
+    "Lead Source",
+)
+
+#: Pre-contact behaviour. Expected to be the strongest admissible signals.
+NUMERIC_FEATURES: tuple[str, ...] = (
+    "TotalVisits",
+    "Total Time Spent on Website",
+    "Page Views Per Visit",
+)
+
+#: Self-reported at submission. `Select` is treated as missing; rare levels are grouped.
+FORM_FEATURES: tuple[str, ...] = (
+    "Specialization",
+    "What is your current occupation",
+    "What matters most to you in choosing a course",
+    "City",
+    "Country",
+    "How did you hear about X Education",
+)
+
+#: Stated by the lead on the form.
+CONTACT_PREFERENCE_FEATURES: tuple[str, ...] = (
+    "Do Not Email",
+    "Do Not Call",
+)
+
+#: Ad and opt-in flags. Near-constant ones are dropped in Phase 2 once measured (T-203).
+FLAG_FEATURES: tuple[str, ...] = (
+    "Search",
+    "Magazine",
+    "Newspaper Article",
+    "X Education Forums",
+    "Newspaper",
+    "Digital Advertisement",
+    "Through Recommendations",
+    "Receive More Updates About Our Courses",
+    "Update me on Supply Chain Content",
+    "Get updates on DM Content",
+    "I agree to pay the amount through cheque",
+    "A free copy of Mastering The Interview",
+)
+
+#: Suspect: some values may record that a rep already made contact. Trained both ways,
+#: both reported (docs/02 FR-2, assumption A-2). Never silently included.
+ACTIVITY_FEATURES: tuple[str, ...] = (
+    "Last Activity",
+    "Last Notable Activity",
+)
+
+#: Written by the sales team *after* working the lead. These leak the outcome and are
+#: banned from any shipping model. They appear only in the labelled, unshippable
+#: "leakage row" of the results table.
+BANNED_LEAKAGE_COLUMNS: tuple[str, ...] = (
+    "Tags",
+    "Lead Quality",
+    "Asymmetrique Activity Index",
+    "Asymmetrique Profile Index",
+    "Asymmetrique Activity Score",
+    "Asymmetrique Profile Score",
+)
+
+#: Too sparse to learn from: 74.2% empty once `Select` counts as missing.
+DROPPED_SPARSE_COLUMNS: tuple[str, ...] = ("Lead Profile",)
+
+FeatureSet = Literal["shipping", "audit_with_leakage"]
+
+
+def categorical_features(*, include_activity: bool = True) -> tuple[str, ...]:
+    """Admissible categorical columns.
+
+    Args:
+        include_activity: include the two activity columns. They are admissible only if
+            the Phase 2 audit shows they do not encode sales contact, so the caller must
+            say which variant it wants rather than inheriting a default silently.
+    """
+    columns = SOURCE_FEATURES + FORM_FEATURES + CONTACT_PREFERENCE_FEATURES + FLAG_FEATURES
+    if include_activity:
+        columns += ACTIVITY_FEATURES
+    return columns
+
+
+def shipping_features(*, include_activity: bool = True) -> tuple[str, ...]:
+    """Every column a shippable model may use. Contains no banned column, by construction."""
+    return NUMERIC_FEATURES + categorical_features(include_activity=include_activity)
+
+
+def audit_features(*, include_activity: bool = True) -> tuple[str, ...]:
+    """The shipping set plus the leaking columns.
+
+    Used exactly once, to quantify the leakage gap for the README's last row. A model
+    trained on this set must never be written to ``models/``.
+    """
+    return shipping_features(include_activity=include_activity) + BANNED_LEAKAGE_COLUMNS
+
+
+def feature_set(name: FeatureSet, *, include_activity: bool = True) -> tuple[str, ...]:
+    """Resolve a named feature set."""
+    if name == "shipping":
+        return shipping_features(include_activity=include_activity)
+    if name == "audit_with_leakage":
+        return audit_features(include_activity=include_activity)
+    raise ValueError(f"unknown feature set {name!r}; expected 'shipping' or 'audit_with_leakage'")
+
+
+def excluded_columns() -> tuple[str, ...]:
+    """Columns that never reach a model: identifiers, leaking columns, sparse columns."""
+    return ID_COLUMNS + BANNED_LEAKAGE_COLUMNS + DROPPED_SPARSE_COLUMNS
+
+
+# ---------------------------------------------------------------------------
+# Environment-driven settings
+# ---------------------------------------------------------------------------
+
+
+class Settings(BaseSettings):
+    """Runtime configuration. Frozen: load it once, pass it down.
+
+    Every field has a documented default, so the pipeline runs with no ``.env`` file at all.
+    A bad value raises on construction rather than failing later in a training run.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="LEADSCORE_",
+        env_file=(".env", ".env.local"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
+
+    # --- paths ---
+    data_raw: Path = Field(
+        default=Path("data/raw/Leads.csv"),
+        description="The raw dataset. Git-ignored; downloaded by the user.",
+    )
+    model_path: Path = Field(default=Path("models/model.joblib"))
+    model_card_path: Path = Field(default=Path("models/model_card.json"))
+    db_path: Path = Field(default=Path("data/predictions.db"))
+
+    # --- training ---
+    random_seed: int = Field(default=42, ge=0)
+    test_size: float = Field(default=0.2, gt=0.0, lt=1.0)
+    cv_folds: int = Field(default=5, ge=2)
+    optuna_trials: int = Field(
+        default=40,
+        ge=0,
+        description="0 disables tuning and uses LightGBM defaults. First item on the cut list.",
+    )
+    rare_level_threshold: float = Field(
+        default=0.01,
+        gt=0.0,
+        lt=1.0,
+        description="Categorical levels rarer than this are grouped into 'Other'.",
+    )
+    target_rate_tolerance: float = Field(
+        default=0.02,
+        gt=0.0,
+        lt=1.0,
+        description="How far the loaded data's conversion rate may drift before a warning.",
+    )
+
+    # --- quality gate (docs/10) ---
+    gate_min_roc_auc: float = Field(default=0.80, ge=0.5, le=1.0)
+    gate_max_brier: float = Field(default=0.18, gt=0.0, le=1.0)
+
+    # --- grades: a policy in percentiles, not score cut-offs ---
+    # The actual 0-100 cut-offs are computed on validation data and written to the model
+    # card, because they depend on the fitted score distribution. Nothing hardcodes them.
+    grade_a_percentile: float = Field(
+        default=0.80, gt=0.0, lt=1.0, description="Top 20% of scores are grade A."
+    )
+    grade_b_percentile: float = Field(
+        default=0.50, gt=0.0, lt=1.0, description="The next 30% are grade B; the rest are C."
+    )
+
+    # --- api ---
+    api_host: str = Field(default="0.0.0.0")  # noqa: S104  - containerised; see docs/09
+    api_port: int = Field(default=8000, ge=1, le=65_535)
+    max_batch: int = Field(default=1_000, ge=1)
+    api_key: str = Field(
+        default="",
+        description="Optional shared secret for write endpoints. Empty means open (local only).",
+    )
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
+    # --- dashboard ---
+    api_base_url: str = Field(default="http://localhost:8000")
+
+    @field_validator("data_raw", "model_path", "model_card_path", "db_path")
+    @classmethod
+    def _no_empty_path(cls, value: Path) -> Path:
+        if str(value).strip() in {"", "."}:
+            raise ValueError("path must not be empty")
+        return value
+
+    @model_validator(mode="after")
+    def _grades_are_ordered(self) -> Settings:
+        if self.grade_b_percentile >= self.grade_a_percentile:
+            raise ValueError(
+                "grade_b_percentile must be below grade_a_percentile "
+                f"(got B={self.grade_b_percentile}, A={self.grade_a_percentile})"
+            )
+        return self
+
+    @property
+    def grade_band_policy(self) -> dict[str, float]:
+        """The band policy, as written into the model card."""
+        return {
+            "A_from_percentile": self.grade_a_percentile,
+            "B_from_percentile": self.grade_b_percentile,
+            "C_from_percentile": 0.0,
+        }
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """The process-wide settings object. Cached, so two calls return the same instance."""
+    return Settings()
