@@ -26,16 +26,22 @@ OK = "PASS"
 BAD = "FAIL"
 WARN = "WARN"
 
-#: Documented emptiness, counting `Select` as missing (docs/02). Used as a warning, not a gate:
-#: a few points of drift is a different upload, not necessarily a wrong one.
-DOCUMENTED_MISSING_RATES = {
-    "Lead Quality": 0.516,
-    "Tags": 0.363,
-    "What is your current occupation": 0.291,
-    "Country": 0.266,
-    "Specialization": 0.156,
-    "Lead Profile": 0.742,
-    "How did you hear about X Education": 0.785,
+#: Documented emptiness from docs/02, as (rate, basis). The basis matters: docs/02 quotes
+#: blank-only rates for most columns but blank-plus-`Select` for the two that are mostly
+#: `Select`. Comparing one against the other produces a false alarm, so each is stated.
+#: A warning, not a gate: a few points of drift means a different upload, not a wrong one.
+BLANK = "blank"
+WITH_SELECT = "blank+Select"
+
+DOCUMENTED_MISSING_RATES: dict[str, tuple[float, str]] = {
+    "Lead Quality": (0.516, BLANK),
+    "Tags": (0.363, BLANK),
+    "What is your current occupation": (0.291, BLANK),
+    "Country": (0.266, BLANK),
+    "Specialization": (0.156, BLANK),
+    "City": (0.397, WITH_SELECT),
+    "Lead Profile": (0.742, WITH_SELECT),
+    "How did you hear about X Education": (0.785, WITH_SELECT),
 }
 
 results: list[tuple[str, str, str]] = []
@@ -45,8 +51,13 @@ def record(status: str, check: str, detail: str) -> None:
     results.append((status, check, detail))
 
 
-def is_missing(value: str) -> bool:
-    return value.strip() == "" or value.strip() == cfg.SELECT_PLACEHOLDER
+def missing_rates(rows: list[dict[str, str]], column: str) -> tuple[float, float]:
+    """Return (blank rate, blank-plus-`Select` rate) for one column."""
+    values = [(row.get(column) or "").strip() for row in rows]
+    blank = sum(1 for value in values if value == "")
+    select = sum(1 for value in values if value == cfg.SELECT_PLACEHOLDER)
+    total = len(values) or 1
+    return blank / total, (blank + select) / total
 
 
 def main() -> int:
@@ -115,16 +126,17 @@ def main() -> int:
     )
 
     # --- sparseness, reported for information ---
-    for column, documented in DOCUMENTED_MISSING_RATES.items():
+    for column, (documented, basis) in DOCUMENTED_MISSING_RATES.items():
         if column not in present:
             continue
-        empty = sum(1 for row in rows if is_missing(row.get(column) or ""))
-        actual = empty / len(rows)
+        blank_rate, with_select_rate = missing_rates(rows, column)
+        actual = blank_rate if basis == BLANK else with_select_rate
         close = abs(actual - documented) <= 0.05
         record(
             OK if close else WARN,
-            f"missing rate: {column}",
-            f"{actual:.1%} (docs say {documented:.1%})",
+            f"missing: {column}",
+            f"blank {blank_rate:.1%}, +Select {with_select_rate:.1%}; "
+            f"docs say {documented:.1%} ({basis})",
         )
 
     return report()

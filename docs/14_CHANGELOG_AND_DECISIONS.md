@@ -198,6 +198,25 @@ Verified by running, not by inspection: `ruff check` clean, **32 tests passing**
 is nothing to push to (owner action, OQ-11). T-107 needs the Kaggle download, also owner action.
 `make install` (the full ML stack) has never been run; only the Phase 1 subset is installed.
 
+### 2026-11-13 (late) — T-107: the dataset is verified
+
+The real `Leads.csv` is on disk and `scripts/check_data.py` exits 0. **Phase 2 is unblocked.**
+
+- 9,240 rows x 37 columns, `Converted` rate **0.3854** against an expected 0.3854 — drift 0.0000.
+- Every column named in `config.py` exists in the file, so the column groups and the upload agree.
+- Source: the Kaggle archive also ships `Leads Data Dictionary.xlsx`, kept beside the CSV in
+  `data/raw/` (git-ignored with it).
+
+**Two corrections came out of the check, both in the docs rather than the data:**
+
+1. The checker counted `Select` as missing for every column, while docs/02 quoted blank-only rates
+   for most and blank-plus-`Select` for two. That mismatch raised a false warning on
+   `Specialization`. The checker now tracks both bases and compares each against the one docs/02
+   states; docs/02 carries the full table.
+2. **`City` is 39.7% effectively missing** (15.4% blank plus 24.3% `Select`) and was not in the
+   original figures at all — emptier than `Specialization`. It is an admissible feature, so T-201
+   decides whether it earns its place.
+
 ### Next entry
 
 Phase 1 (T-101 → T-107), once OQ-2, OQ-3 and OQ-4 are answered.

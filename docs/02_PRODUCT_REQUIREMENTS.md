@@ -26,7 +26,24 @@ A feature is admissible only if its value is known at scoring time.
 | Sales-filled | `Tags`, `Lead Quality`, `Asymmetrique Activity Index`, `Asymmetrique Profile Index`, `Asymmetrique Activity Score`, `Asymmetrique Profile Score` | **No** | written after a rep works the lead; they leak the outcome |
 | Mostly empty | `Lead Profile` (74.2% empty counting `"Select"`) | **Drop** | too sparse to learn from |
 
-Known missing-value rates in the raw file: `Lead Quality` 51.6%, the four `Asymmetrique` columns 45.7%, `Tags` 36.3%, current occupation 29.1%, `Country` 26.6%, `Specialization` 15.6%. Counting `"Select"` as missing, `How did you hear about X Education` is 78.5% empty and `Lead Profile` 74.2%.
+**Missing values, measured on the real file 2026-11-13** by `scripts/check_data.py`. The basis
+matters: `Select` is a form default, so a column can look populated and be empty in practice.
+
+| Column | Blank | `Select` | Effectively missing |
+| --- | --- | --- | --- |
+| `How did you hear about X Education` | 23.9% | 54.6% | **78.5%** |
+| `Lead Profile` | 29.3% | 44.9% | **74.2%** |
+| `Lead Quality` | 51.6% | — | **51.6%** |
+| `Asymmetrique` columns (4) | 45.7% | — | **45.7%** |
+| `City` | 15.4% | 24.3% | **39.7%** |
+| `Specialization` | 15.6% | 21.0% | **36.6%** |
+| `Tags` | 36.3% | — | **36.3%** |
+| `What is your current occupation` | 29.1% | — | **29.1%** |
+| `Country` | 26.6% | — | **26.6%** |
+
+`City` was not in the original figures and is **39.7% effectively missing** — higher than
+`Specialization`. It is an admissible feature, so Phase 2 decides whether it earns its place
+(T-201). Treat the 15.4% blank figure as misleading on its own.
 
 **Acceptance:** a leakage-audit notebook records a yes/no decision per column with its reason, and the results table contains a LightGBM row trained *with* the sales-filled columns, labelled unshippable, so the inflated gap is visible.
 

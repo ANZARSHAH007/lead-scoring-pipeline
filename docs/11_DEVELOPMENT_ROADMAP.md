@@ -33,7 +33,7 @@ Dependencies use task IDs. Priority: **P0** = P1 fails without it, **P1** = plan
 | T-104 | `Makefile` targets: `install train serve test lint docker` | — | T-102 | P1 | one entry point per action | every target runs or explains why it cannot | **Done (untested)** — `make` is not installed on this machine; the README lists each target's raw command, and CI runs on Linux |
 | T-105 | `tests/` scaffold + first real test | — | T-103 | P0 | the suite exists and runs | `make test` exits 0 with ≥ 1 passing test | **Done (verified)** — ruff clean, 32 passed |
 | T-106 | `git init`, first commit, push to the public repo | — | T-102 | P0 | history starts clean | remote shows the commit; no data/model/secret in it | **In progress** — local commit `872d629`, 34 files, verified clean; remote not created yet (owner, OQ-11) |
-| T-107 | Download `Leads.csv` to `data/raw/` and confirm 9,240 × 37 and 38.54% positive | M2 | T-106 | P0 | the real data is on disk, untracked | shape and target rate printed and matching | **Blocked — owner**: needs a Kaggle download |
+| T-107 | Download `Leads.csv` to `data/raw/` and confirm 9,240 × 37 and 38.54% positive | M2 | T-106 | P0 | the real data is on disk, untracked | shape and target rate printed and matching | **Done (verified)** 2026-11-13 — 9,240 x 37, conversion 0.3854, drift 0.0000, all 37 config columns present, 12/12 checks pass |
 
 ### Phase 2 — Data contract and leakage audit (Sessions 2–3)
 

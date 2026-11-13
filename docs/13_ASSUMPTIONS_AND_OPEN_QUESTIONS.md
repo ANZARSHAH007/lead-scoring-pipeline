@@ -27,7 +27,7 @@ Each is a decision made to keep moving. If one is wrong, the listed consequence 
 
 | # | Assumption | If wrong |
 | --- | --- | --- |
-| A-1 | The Kaggle version of the dataset matches the figures in doc 02 (row count, 38.54% positive, the missing-value rates) | the schema's sanity check fails on day one; doc 02's table is corrected from the real file before Phase 2 continues |
+| A-1 | ~~The Kaggle version matches doc 02's figures~~ — **confirmed 2026-11-13**: 9,240 x 37, conversion rate 0.3854 exactly, every column present | one correction was needed: doc 02 mixed blank-only and blank-plus-`Select` rates. Both bases are now tabulated, and `City` (39.7% effectively missing) was added |
 | A-2 | `Last Activity` / `Last Notable Activity` partly encode sales contact | they are trained both ways and both reported (T-203); no guess is shipped |
 | A-3 | Website-behaviour columns are the strongest admissible signals | if not, the one-rule baseline is weak and the model's lift over it looks larger than it is; error analysis (T-406) catches this |
 | A-4 | LightGBM will beat logistic regression on this data | if it does not, that is the finding: ship logistic regression, publish the comparison, and say why |
