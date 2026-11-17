@@ -28,7 +28,7 @@ Each is a decision made to keep moving. If one is wrong, the listed consequence 
 | # | Assumption | If wrong |
 | --- | --- | --- |
 | A-1 | ~~The Kaggle version matches doc 02's figures~~ — **confirmed 2026-11-13**: 9,240 x 37, conversion rate 0.3854 exactly, every column present | one correction was needed: doc 02 mixed blank-only and blank-plus-`Select` rates. Both bases are now tabulated, and `City` (39.7% effectively missing) was added |
-| A-2 | `Last Activity` / `Last Notable Activity` partly encode sales contact | they are trained both ways and both reported (T-203); no guess is shipped |
+| A-2 | ~~`Last Activity` / `Last Notable Activity` partly encode sales contact~~ — **confirmed 2026-11-17** | they do: `SMS Sent` (62.9% / 69.4%) and `Unreachable` (68.8%) are company actions. Both columns excluded; the variant is reported as a labelled comparison (D-016) |
 | A-3 | Website-behaviour columns are the strongest admissible signals | if not, the one-rule baseline is weak and the model's lift over it looks larger than it is; error analysis (T-406) catches this |
 | A-4 | LightGBM will beat logistic regression on this data | if it does not, that is the finding: ship logistic regression, publish the comparison, and say why |
 | A-5 | Calibration will be needed (boosted trees are usually overconfident) | if the reliability curve is already diagonal, skip `CalibratedClassifierCV` and record that it was not needed |

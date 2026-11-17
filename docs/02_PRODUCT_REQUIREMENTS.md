@@ -22,7 +22,7 @@ A feature is admissible only if its value is known at scoring time.
 | Form answers | `Specialization`, `What is your current occupation`, `What matters most to you in choosing a course`, `City`, `Country`, `How did you hear about X Education` | **Yes, with care** | self-reported at submission; `"Select"` → missing, rare values grouped |
 | Contact preferences | `Do Not Email`, `Do Not Call` | **Yes** | known on arrival |
 | Ad / opt-in flags | `Search`, `Magazine`, `Newspaper Article`, `X Education Forums`, `Newspaper`, `Digital Advertisement`, `Through Recommendations`, `Receive More Updates About Our Courses`, `Update me on Supply Chain Content`, `Get updates on DM Content`, `I agree to pay the amount through cheque`, `A free copy of Mastering The Interview` | **No — resolved 2026-11-13** | measured: all 12 are near-constant (one value covers ≥ 95% of rows), so none can discriminate. Dropped. |
-| Activity | `Last Activity`, `Last Notable Activity` | **Test both ways** | some values may encode sales contact; train with and without, report both |
+| Activity | `Last Activity`, `Last Notable Activity` | **No — decided 2026-11-17** | measured: values mix lead behaviour with company actions. `SMS Sent` converts at 62.9% / 69.4% and `Unreachable` at 68.8%, and a lead that has just arrived cannot have any of them. Worth +0.032 ROC-AUC and excluded anyway (D-016) |
 | Sales-filled | `Tags`, `Lead Quality`, `Asymmetrique Activity Index`, `Asymmetrique Profile Index`, `Asymmetrique Activity Score`, `Asymmetrique Profile Score` | **No** | written after a rep works the lead; they leak the outcome |
 | Mostly empty | `Lead Profile` (74.2% empty counting `"Select"`) | **Drop** | too sparse to learn from |
 

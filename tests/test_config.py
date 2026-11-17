@@ -33,21 +33,34 @@ def test_shipping_features_exclude_identifiers_and_sparse_columns() -> None:
     assert cfg.TARGET not in shipping
 
 
-def test_audit_set_is_the_shipping_set_plus_exactly_the_banned_columns() -> None:
+def test_audit_set_is_the_shipping_set_plus_activity_and_the_banned_columns() -> None:
     shipping = set(cfg.shipping_features())
     audit = set(cfg.audit_features())
     assert shipping < audit
-    assert audit - shipping == set(cfg.BANNED_LEAKAGE_COLUMNS)
+    assert audit - shipping == set(cfg.BANNED_LEAKAGE_COLUMNS) | set(cfg.ACTIVITY_FEATURES)
 
 
-def test_activity_columns_are_opt_outable() -> None:
-    with_activity = set(cfg.shipping_features(include_activity=True))
-    without = set(cfg.shipping_features(include_activity=False))
-    assert with_activity - without == set(cfg.ACTIVITY_FEATURES)
+def test_the_shipping_set_excludes_the_activity_columns() -> None:
+    """T-205: activity values mix lead behaviour with company actions (reports/02)."""
+    assert not set(cfg.shipping_features()) & set(cfg.ACTIVITY_FEATURES)
+    assert set(cfg.with_activity_features()) - set(cfg.shipping_features()) == set(
+        cfg.ACTIVITY_FEATURES
+    )
+
+
+def test_the_shipping_set_excludes_the_near_constant_flags() -> None:
+    """T-201 measured all 12 as near-constant; none can discriminate."""
+    assert not set(cfg.shipping_features()) & set(cfg.FLAG_FEATURES)
+
+
+def test_the_shipping_set_is_frozen_at_thirteen_columns() -> None:
+    assert len(cfg.shipping_features()) == 13
+    assert len(set(cfg.shipping_features())) == 13
 
 
 def test_feature_set_resolves_known_names() -> None:
     assert cfg.feature_set("shipping") == cfg.shipping_features()
+    assert cfg.feature_set("with_activity") == cfg.with_activity_features()
     assert cfg.feature_set("audit_with_leakage") == cfg.audit_features()
 
 

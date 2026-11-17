@@ -187,6 +187,38 @@ commit (then the analysis is not in the repo at all).
 
 ---
 
+### D-016 — The activity columns are excluded
+**Date:** 2026-11-17 · **Status:** accepted
+
+**Context.** `Last Activity` and `Last Notable Activity` were the one group docs/02 refused to
+decide in advance, pending measurement. Measured, their values split into two kinds:
+
+| Value | Conversion | Who did it |
+| --- | ---: | --- |
+| `Email Opened` | 36.5% | the lead |
+| `Olark Chat Conversation` | 8.6% | the lead |
+| `SMS Sent` | 62.9% / 69.4% | **the company** |
+| `Unreachable` | 68.8% | **the company** |
+
+**Decision.** Both columns are excluded from the shipping model. The shipping feature set is
+frozen at **13 columns**. The variant that includes them is reported as a labelled comparison,
+exactly as the sales-filled row is.
+
+**Why.** `SMS Sent` is an outbound message and `Unreachable` is the outcome of a call attempt.
+Neither can exist for a lead that has just arrived, which is the definition of a feature that
+is not known at scoring time. Keeping them would have been the same mistake as keeping `Tags`,
+made quieter by a smaller number.
+
+**Cost, stated plainly.** 0.897 → 0.866 cross-validated ROC-AUC. The published headline is
+lower because it is true.
+
+**Rejected.** Keeping both (contradicts the project's own rule, and a reviewer who opens the
+value list finds `SMS Sent` immediately). Filtering to lead-initiated values only (at scoring
+time a fresh lead has no activity at all, so the feature would be almost always missing in
+production — training and serving distributions would not match, for more code and no gain).
+
+---
+
 ## Changelog
 
 ### 2026-11-13 — Planning (Phase 0)
@@ -277,6 +309,36 @@ Also: the chart palette was validated rather than eyeballed, which rejected the 
 data marks (D-014), and the analysis ships as markdown instead of notebooks (D-015).
 
 **Not done:** T-202 (pandera schema) and T-203 (the leakage audit itself) are next.
+
+### 2026-11-17 — Phase 2 complete: the data contract and the leakage audit
+
+**T-202, the contract.** `src/leadscore/schema.py` enforces four things before any model sees
+a row: every column config names is present; no column is unclassified; types and ranges hold;
+shape and target rate are sane (a warning, not a failure). 20 tests, and the real file
+validates clean. Two bugs were found and fixed while writing it — pandas 3 gives text columns
+the `str` dtype rather than `object`, so the `Select` normalisation silently skipped every
+column until the check was rewritten.
+
+**T-203 and T-204, the audit.** `reports/02_leakage_audit.md` carries a yes/no decision with a
+reason for all 37 columns, and measures what the banned columns are worth:
+
+| Feature set | Columns | CV ROC-AUC |
+| --- | ---: | ---: |
+| Shipping (admissible only) | 13 | **0.866** |
+| + activity columns | 15 | 0.897 |
+| + sales-filled (leaks) | 21 | 0.982 |
+
+**The leakage gap is +0.117 ROC-AUC.** A per-column univariate model makes the case visually:
+`Tags` alone scores **0.921** — nearly the whole leaking model from one field a rep types after
+calling. `Lead Quality` alone scores 0.800.
+
+**T-205, frozen.** The shipping set is 13 columns, enforced by tests rather than convention.
+Out: 12 near-constant flags (reports/01), 2 activity columns (D-016), 6 sales-filled, 1 sparse,
+2 identifiers.
+
+**What this means for the rest of the project:** the honest bar for LightGBM to beat is 0.866,
+not 0.98. Any public notebook on this dataset reporting ~0.98 is scoring leads with information
+that does not exist when a lead arrives.
 
 ### Next entry
 

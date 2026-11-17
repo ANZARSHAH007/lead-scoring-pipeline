@@ -40,10 +40,10 @@ Dependencies use task IDs. Priority: **P0** = P1 fails without it, **P1** = plan
 | ID | Task | Feature | Depends | Pri | Expected outcome | Acceptance criterion | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | T-201 | `scripts/eda.py` → `reports/01_eda.md` — missingness, near-constant columns, numeric profile, conversion by origin and source | M2 | T-107 | P0 | the data is understood, 4 charts saved | **Done (verified)** 2026-11-13 — report + 4 figures generated; 3 findings changed the plan |
-| T-202 | `src/leadscore/schema.py` — pandera contract | M2 | T-201 | P0 | bad data fails loudly | three corruption tests produce three distinct errors | Not started |
-| T-203 | `notebooks/02_leakage_audit.ipynb` — a yes/no decision per column, with reason | M2 | T-201 | **P0** | the audit record doc 02 promises | every one of the 37 columns is classified | Not started |
-| T-204 | Quantify the leakage gap: logistic regression with vs without sales columns | M2 | T-203 | P0 | the number the README's last row reports | both ROC-AUCs logged to MLflow | Not started |
-| T-205 | Freeze the two feature sets in config | M1 | T-203 | P0 | `shipping` and `audit_with_leakage` | `test_features` asserts banned columns absent from `shipping` | Not started |
+| T-202 | `src/leadscore/schema.py` — pandera contract | M2 | T-201 | P0 | bad data fails loudly | three corruption tests produce three distinct errors | **Done (verified)** — 20 schema tests; the real file validates clean |
+| T-203 | `notebooks/02_leakage_audit.ipynb` — a yes/no decision per column, with reason | M2 | T-201 | **P0** | the audit record doc 02 promises | every one of the 37 columns is classified | **Done (verified)** — `reports/02` carries the full decision record; `classify()` raises if any column is unclassified |
+| T-204 | Quantify the leakage gap: logistic regression with vs without sales columns | M2 | T-203 | P0 | the number the README's last row reports | both ROC-AUCs reported in `reports/02` | **Done (verified)** — 0.866 shipping vs 0.982 with leakage, **+0.117**. MLflow deferred to Phase 3 (T-303) where it is introduced; the numbers here come from `cross_val_score` with the config seed |
+| T-205 | Freeze the feature sets in config | M1 | T-203 | P0 | `shipping` (13), `with_activity`, `audit_with_leakage` | **Done (verified)** — `test_config` asserts the shipping set is 13 columns and contains no banned, flag or activity column |
 
 ### Phase 3 — Baselines and challenger (Sessions 4–5)
 

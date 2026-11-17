@@ -111,49 +111,73 @@ BANNED_LEAKAGE_COLUMNS: tuple[str, ...] = (
 #: Too sparse to learn from: 74.2% empty once `Select` counts as missing.
 DROPPED_SPARSE_COLUMNS: tuple[str, ...] = ("Lead Profile",)
 
-FeatureSet = Literal["shipping", "audit_with_leakage"]
+FeatureSet = Literal["shipping", "with_activity", "audit_with_leakage"]
 
 
-def categorical_features(*, include_activity: bool = True) -> tuple[str, ...]:
+def categorical_features() -> tuple[str, ...]:
     """Admissible categorical columns.
 
-    Args:
-        include_activity: include the two activity columns. They are admissible only if
-            the Phase 2 audit shows they do not encode sales contact, so the caller must
-            say which variant it wants rather than inheriting a default silently.
+    Excludes the ad and opt-in flags (near-constant, measured in reports/01) and the
+    activity columns (contaminated, measured in reports/02).
     """
-    columns = SOURCE_FEATURES + FORM_FEATURES + CONTACT_PREFERENCE_FEATURES + FLAG_FEATURES
-    if include_activity:
-        columns += ACTIVITY_FEATURES
-    return columns
+    return SOURCE_FEATURES + FORM_FEATURES + CONTACT_PREFERENCE_FEATURES
 
 
-def shipping_features(*, include_activity: bool = True) -> tuple[str, ...]:
-    """Every column a shippable model may use. Contains no banned column, by construction."""
-    return NUMERIC_FEATURES + categorical_features(include_activity=include_activity)
+def shipping_features() -> tuple[str, ...]:
+    """The 13 columns a shippable model may use. Frozen by T-205 on 2026-11-17.
+
+    Contains no banned column, no near-constant flag and no activity column, by
+    construction rather than by convention.
+    """
+    return NUMERIC_FEATURES + categorical_features()
 
 
-def audit_features(*, include_activity: bool = True) -> tuple[str, ...]:
-    """The shipping set plus the leaking columns.
+def with_activity_features() -> tuple[str, ...]:
+    """The shipping set plus the two activity columns.
+
+    A labelled comparison only, never shipped: their values mix lead behaviour with
+    company actions (`SMS Sent`, `Unreachable`), which cannot exist for a lead that has
+    just arrived. Worth +0.032 ROC-AUC and excluded anyway. See reports/02 and D-016.
+    """
+    return shipping_features() + ACTIVITY_FEATURES
+
+
+def audit_features() -> tuple[str, ...]:
+    """Everything, including the sales-filled columns.
 
     Used exactly once, to quantify the leakage gap for the README's last row. A model
     trained on this set must never be written to ``models/``.
     """
-    return shipping_features(include_activity=include_activity) + BANNED_LEAKAGE_COLUMNS
+    return with_activity_features() + BANNED_LEAKAGE_COLUMNS
 
 
-def feature_set(name: FeatureSet, *, include_activity: bool = True) -> tuple[str, ...]:
+def feature_set(name: FeatureSet) -> tuple[str, ...]:
     """Resolve a named feature set."""
-    if name == "shipping":
-        return shipping_features(include_activity=include_activity)
-    if name == "audit_with_leakage":
-        return audit_features(include_activity=include_activity)
-    raise ValueError(f"unknown feature set {name!r}; expected 'shipping' or 'audit_with_leakage'")
+    resolvers = {
+        "shipping": shipping_features,
+        "with_activity": with_activity_features,
+        "audit_with_leakage": audit_features,
+    }
+    if name not in resolvers:
+        raise ValueError(
+            f"unknown feature set {name!r}; expected one of {sorted(resolvers)}"
+        )
+    return resolvers[name]()
 
 
 def excluded_columns() -> tuple[str, ...]:
-    """Columns that never reach a model: identifiers, leaking columns, sparse columns."""
-    return ID_COLUMNS + BANNED_LEAKAGE_COLUMNS + DROPPED_SPARSE_COLUMNS
+    """Columns that never reach a shippable model, and why each is out.
+
+    Identifiers (no signal), sales-filled (leakage), sparse, near-constant flags, and the
+    activity columns (post-contact values).
+    """
+    return (
+        ID_COLUMNS
+        + BANNED_LEAKAGE_COLUMNS
+        + DROPPED_SPARSE_COLUMNS
+        + FLAG_FEATURES
+        + ACTIVITY_FEATURES
+    )
 
 
 # ---------------------------------------------------------------------------
