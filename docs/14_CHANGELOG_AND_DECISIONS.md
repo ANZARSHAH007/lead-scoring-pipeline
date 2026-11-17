@@ -219,6 +219,31 @@ production — training and serving distributions would not match, for more code
 
 ---
 
+### D-017 — MLflow tracks to local SQLite, and the package is installed editable
+**Date:** 2026-11-17 · **Status:** accepted
+
+**Context.** Two things broke on contact with the real toolchain rather than in planning.
+
+1. **MLflow 3.18 retired the plain file store.** `file:./mlruns` now raises outright:
+   *"The filesystem tracking backend is in maintenance mode… migrate to a database backend."*
+   docs/05 had specified the file store.
+2. **`python -m leadscore.train` could not import the package.** The test suite reaches `src/`
+   through pytest's `pythonpath`, which does nothing for a module run, so the documented
+   command failed on a clean checkout.
+
+**Decision.** Track to `sqlite:///mlflow.db` — still local, still no server and no account,
+and the supported path going forward. Install the package editable (`pip install -e .`), which
+is what the README already told a reader to do.
+
+**Why not `MLFLOW_ALLOW_FILE_STORE=true`.** It silences the error and keeps a backend its own
+maintainers have deprecated. Setting an opt-out flag to postpone a migration is the kind of
+shortcut this project exists to avoid, and the SQLite switch cost one config line.
+
+**Consequence.** `mlflow.db` is git-ignored alongside `mlruns/` and `mlartifacts/`.
+`.env.example`, docs/05 and docs/12 updated.
+
+---
+
 ## Changelog
 
 ### 2026-11-13 — Planning (Phase 0)
@@ -339,6 +364,38 @@ Out: 12 near-constant flags (reports/01), 2 activity columns (D-016), 6 sales-fi
 **What this means for the rest of the project:** the honest bar for LightGBM to beat is 0.866,
 not 0.98. Any public notebook on this dataset reporting ~0.98 is scoring leads with information
 that does not exist when a lead arrives.
+
+### 2026-11-17 — Phase 3: the split, the baselines and the challenger
+
+Verified by running: ruff clean, **81 tests**, selection reproduces on a second run with the
+same seed.
+
+| Model | CV ROC-AUC | Std |
+| --- | ---: | ---: |
+| **LightGBM, Optuna-tuned** | **0.8825** | 0.0045 |
+| LightGBM, defaults | 0.8718 | 0.0072 |
+| Logistic regression | 0.8679 | 0.0062 |
+| One-rule (time on site) | 0.6517 | 0.0116 |
+| Random | 0.5000 | 0.0000 |
+
+5-fold stratified CV inside the training split. **The test set was not opened** — 1,848 rows
+are held back for Phase 4, and a test spies on what `cross_val_score` actually receives to
+prove no held-out index reaches it.
+
+**The margin is the story.** Untuned, LightGBM beat logistic regression by +0.004, which is
+inside the fold-to-fold noise and is not a win. Forty Optuna trials moved it to **+0.0146**,
+which clears logistic regression's own standard deviation. So the gradient booster earns its
+place, but narrowly: a linear model on 13 admissible columns is close to the ceiling this data
+supports. Phase 4 decides what ships on calibration and Capture@20% as well, and the README
+reports the comparison rather than quietly shipping the more complicated model.
+
+The one-rule baseline lands at 0.6517 — far below both. Sorting a spreadsheet by time on site
+really is worse than modelling, which report 01 had cast into doubt when it showed the
+relationship was U-shaped.
+
+Two environment problems were found by running rather than planning, both in D-017: MLflow
+3.18 refuses the plain file store, and the package needed an editable install before
+`python -m leadscore.train` would work at all.
 
 ### Next entry
 

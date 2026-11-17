@@ -13,6 +13,7 @@ models/*
 # experiment tracking
 mlruns/
 mlartifacts/
+mlflow.db
 
 # secrets
 .env

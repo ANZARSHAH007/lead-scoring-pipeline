@@ -258,6 +258,18 @@ class Settings(BaseSettings):
     # --- dashboard ---
     api_base_url: str = Field(default="http://localhost:8000")
 
+    # --- experiment tracking ---
+    # MLflow's own variable name, not the LEADSCORE_ prefix, so the standard tooling and
+    # this project read the same setting. Matches .env.example.
+    mlflow_tracking_uri: str = Field(
+        default="sqlite:///mlflow.db",
+        validation_alias="MLFLOW_TRACKING_URI",
+        description=(
+            "Local SQLite file by default: no server, no account. MLflow 3.18 retired the "
+            "plain `file:./mlruns` store, so a database backend is the supported local path."
+        ),
+    )
+
     @field_validator("data_raw", "model_path", "model_card_path", "db_path")
     @classmethod
     def _no_empty_path(cls, value: Path) -> Path:

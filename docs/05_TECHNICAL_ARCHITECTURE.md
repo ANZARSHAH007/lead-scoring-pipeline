@@ -42,7 +42,7 @@ Every choice is justified against this project, not against popularity. Alternat
 | Tuning | **Optuna** | fixed trial budget, easy to cut if time runs short | first thing cut under time pressure |
 | Calibration | **sklearn `CalibratedClassifierCV`** | the score must mean a probability, or grades are meaningless | costs a CV fit |
 | Explanations | **SHAP `TreeExplainer`** | exact and fast for tree models; per-lead reasons are a stated requirement | adds latency per request; budgeted at < 100 ms |
-| Experiment tracking | **MLflow**, local file store | compares runs without a server or an account | local only; no shared history |
+| Experiment tracking | **MLflow**, local SQLite (`sqlite:///mlflow.db`) | compares runs without a server or an account | local only; the plain file store was retired in MLflow 3.18, so a DB backend is the supported local path |
 | API | **FastAPI + Pydantic v2 + Uvicorn** | typed request validation and a free `/docs` page, which is half the demo | — |
 | Prediction log | **SQLite** | zero setup, one file, enough for a demo's volume | single writer; becomes Postgres in the capstone |
 | Dashboard | **Streamlit** | a usable three-page UI in one file, and P1's point is the pipeline | little design control — see doc 08 and OQ-5 |

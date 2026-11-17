@@ -49,11 +49,11 @@ Dependencies use task IDs. Priority: **P0** = P1 fails without it, **P1** = plan
 
 | ID | Task | Feature | Depends | Pri | Expected outcome | Acceptance criterion | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-301 | `features.py` — ColumnTransformer, rare-level grouping, unknown-safe one-hot | M3 | T-205 | P0 | identical preprocessing both lanes | an unseen category scores without error | Not started |
-| T-302 | Single stratified 80/20 split, seeded, in `train.py` | M4 | T-301 | P0 | one split for the whole project | split is reproducible across runs | Not started |
-| T-303 | Three baselines with 5-fold CV, logged to MLflow | M4 | T-302 | P0 | the bar to beat | MLflow lists random, one-rule, logistic regression | Not started |
-| T-304 | LightGBM + Optuna (budget from config) | M4 | T-303 | P1 | the challenger | CV ROC-AUC beats logistic regression | Not started |
-| T-305 | Pick the winner on CV only; test set still untouched | M4 | T-304 | P0 | an honest selection | the run log states the test set was not read | Not started |
+| T-301 | `features.py` — ColumnTransformer, rare-level grouping, unknown-safe one-hot | M3 | T-205 | P0 | identical preprocessing both lanes | an unseen category scores without error | **Done (verified)** — 16 feature tests, including unseen categories, all-null rows and a joblib round trip |
+| T-302 | Single stratified 80/20 split, seeded, in `train.py` | M4 | T-301 | P0 | one split for the whole project | split is reproducible across runs | **Done (verified)** — 7,392 train / 1,848 test; a test spies on `cross_val_score` and asserts no held-out index reaches it |
+| T-303 | Three baselines with 5-fold CV, logged to MLflow | M4 | T-302 | P0 | the bar to beat | MLflow lists random, one-rule, logistic regression | **Done (verified)** — 0.5000 / 0.6517 / 0.8679 CV ROC-AUC, tracked in `sqlite:///mlflow.db` |
+| T-304 | LightGBM + Optuna (budget from config) | M4 | T-303 | P1 | the challenger | CV ROC-AUC beats logistic regression | **Done (verified)** — 0.8825 ± 0.0045 tuned, vs 0.8679. Untuned it was 0.8718, inside the noise; tuning earned the margin |
+| T-305 | Pick the winner on CV only; test set still untouched | M4 | T-304 | P0 | an honest selection | the run log states the test set was not read | **Done (verified)** — selection ran on CV only; `evaluate.py` opens the test set in Phase 4 |
 
 ### Phase 4 — Calibration, grades, explanations (Sessions 6–7)
 

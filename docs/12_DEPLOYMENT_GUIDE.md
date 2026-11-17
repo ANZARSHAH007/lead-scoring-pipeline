@@ -25,7 +25,7 @@ Every setting is an environment variable with a documented default in `.env.exam
 | `LEADSCORE_MAX_BATCH` | 1000 | 1000 | 1000, possibly lower if abused |
 | `LEADSCORE_API_KEY` | empty | empty | set only if the demo is abused |
 | `LEADSCORE_LOG_LEVEL` | `INFO` | `WARNING` | `INFO` |
-| `MLFLOW_TRACKING_URI` | `file:./mlruns` | `file:./mlruns` | unset — no tracking in the demo |
+| `MLFLOW_TRACKING_URI` | `sqlite:///mlflow.db` | `sqlite:///mlflow.db` | unset — no tracking in the demo |
 | `KAGGLE_USERNAME` / `KAGGLE_KEY` | `.env.local` | **GitHub secrets** | unset |
 
 **Secrets rule:** the Kaggle token is the only real secret, and it exists in exactly two places — the owner's machine (`.env.local`, git-ignored) and GitHub Actions secrets. Never in the image, never in a log, never in a doc. Full rules in doc 09.

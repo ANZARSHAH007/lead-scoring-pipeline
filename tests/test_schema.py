@@ -111,7 +111,12 @@ def test_a_negative_value_is_rejected_in_every_numeric_column(column: str) -> No
 def test_nulls_are_allowed_in_numeric_columns() -> None:
     frame = make_frame()
     frame.loc[0, "TotalVisits"] = None
-    assert sch.validate(frame)["TotalVisits"].isna().sum() == 1
+    with warnings.catch_warnings():
+        # a 6-row fixture always drifts from the documented shape; that is check_shape's
+        # own test to make, not this one's
+        warnings.simplefilter("ignore", sch.DataDriftWarning)
+        validated = sch.validate(frame)
+    assert validated["TotalVisits"].isna().sum() == 1
 
 
 # ---------------------------------------------------------------------------
@@ -153,17 +158,21 @@ def test_normalise_does_not_mutate_the_caller_s_frame() -> None:
 
 
 def test_a_short_frame_warns_rather_than_fails() -> None:
+    # a wide tolerance isolates the row-count warning from the target-rate one
+    settings = cfg.Settings(_env_file=None, target_rate_tolerance=0.9)
     with pytest.warns(sch.DataDriftWarning, match="rows"):
-        notes = sch.check_shape(make_frame(rows=6))
-    assert notes
+        notes = sch.check_shape(make_frame(rows=6), settings)
+    assert notes == [f"expected {cfg.EXPECTED_ROWS:,} rows, found 6"]
 
 
 def test_a_drifted_target_rate_warns() -> None:
-    frame = make_frame(rows=10)
-    frame[cfg.TARGET] = [1] * 10
+    # full-size frame, so the only thing that drifts is the conversion rate
+    frame = make_frame(rows=cfg.EXPECTED_ROWS)
+    frame[cfg.TARGET] = 1
     with pytest.warns(sch.DataDriftWarning, match="conversion rate"):
         notes = sch.check_shape(frame)
-    assert any("conversion rate" in note for note in notes)
+    assert len(notes) == 1
+    assert "conversion rate" in notes[0]
 
 
 def test_validate_still_returns_a_frame_when_the_shape_drifts() -> None:
