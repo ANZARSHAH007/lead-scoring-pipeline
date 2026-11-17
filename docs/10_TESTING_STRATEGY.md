@@ -18,6 +18,10 @@ The thing that separates this repo from a notebook is that **CI can fail it**. T
 
 **Fixtures, not the real CSV, for everything but the quality gate.** A ~200-row fixture with the same columns and a deliberately learnable signal, plus a tiny fixture model, keeps the suite under a minute and lets CI run without a Kaggle token on pull requests.
 
+**Built 2026-11-17: `src/leadscore/fixtures.py`.** `synthetic_leads()` returns a frame with exactly the 37 columns the contract names, the documented conversion rate, and the defects the pipeline has code for — `Select` placeholders, missing numerics, near-constant flag columns and a deliberately leaky `Tags`. It raises if config gains a column the fixture does not have, so CI cannot drift into testing a relaxed contract. The row count deliberately differs from 9,240, so every fixture run trips the drift warning and can never be mistaken for the real upload. No number produced from it may be reported as a result.
+
+**The smoke test is the one that earns its keep.** `tests/test_smoke.py` runs validate → split → cross-validate → track → report on 300 synthetic rows in about ten seconds, in a temporary directory. Phase 3 shipped two bugs — a package that was not importable and an MLflow store that refused writes — which `ruff` and 81 unit tests could not see, because both only exist when the chain actually runs. This test sees them. Run it with `make smoke`, and run `scripts/doctor.py` when it fails, to tell an environment fault from a code fault.
+
 ## Unit tests
 
 ### `test_config.py`

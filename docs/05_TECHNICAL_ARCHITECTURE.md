@@ -76,11 +76,19 @@ lead-scoring-pipeline/
 │   ├── 01_eda.md
 │   ├── 02_leakage_audit.md
 │   └── figures/*.png
+├── scripts/
+│   ├── check_data.py            stdlib-only dataset verifier          [Phase 1]
+│   ├── doctor.py                environment preflight, ~2 seconds     [Phase 1]
+│   ├── eda.py                   report 01                             [Phase 2]
+│   └── leakage_audit.py         report 02                             [Phase 2]
+├── requirements.lock            the pinned resolution that works
 ├── src/leadscore/
 │   ├── config.py                feature lists, paths, seed, thresholds [Phase 1]
 │   ├── schema.py                pandera contract on the raw CSV       [Phase 2]
 │   ├── features.py              cleaning + ColumnTransformer          [Phase 3]
 │   ├── train.py                 CV, tuning, calibration, MLflow       [Phase 3]
+│   ├── plotting.py              shared chart tokens + axis guard      [Phase 2]
+│   ├── fixtures.py              synthetic Leads.csv for CI and tests  [Phase 3]
 │   ├── evaluate.py              metrics, plots, quality gate          [Phase 4]
 │   ├── explain.py               SHAP values to plain-English reasons   [Phase 4]
 │   └── api/
@@ -93,6 +101,10 @@ lead-scoring-pipeline/
 │   ├── test_config.py                                                 [Phase 1]
 │   ├── test_schema.py                                                 [Phase 2]
 │   ├── test_features.py                                               [Phase 3]
+│   ├── test_train.py                                                  [Phase 3]
+│   ├── test_fixtures.py         the fixture still matches the contract [Phase 3]
+│   ├── test_plotting.py         the honest-axis rule                   [Phase 3]
+│   ├── test_smoke.py            the whole chain, synthetic data        [Phase 3]
 │   ├── test_api.py                                                    [Phase 5]
 │   └── test_model_quality.py                                          [Phase 4]
 ├── docs/                        01–14, this documentation set

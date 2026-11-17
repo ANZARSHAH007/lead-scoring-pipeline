@@ -302,8 +302,8 @@ def write_report(results: list[CvResult], split: Split, settings: cfg.Settings) 
 
     from leadscore import plotting as viz
 
-    reports = Path(__file__).resolve().parents[2] / "reports"
-    figures = reports / "figures"
+    reports = settings.reports_dir
+    figures = settings.figures_dir
     viz.apply_style()
 
     ranked = sorted(results, key=lambda r: r.mean_auc, reverse=True)
@@ -335,7 +335,6 @@ def write_report(results: list[CvResult], split: Split, settings: cfg.Settings) 
             result.mean_auc, y + 0.26, f"{result.mean_auc:.4f}",
             ha="center", fontsize=8, color=viz.INK,
         )
-    ax.axvline(0.5, color=viz.INK_MUTED, linewidth=1, linestyle="--")
     ax.text(0.5, -0.62, " chance", color=viz.INK_MUTED, fontsize=8, va="center")
     if linear:
         ax.axvline(linear.mean_auc, color=viz.SERIES_B, linewidth=1, linestyle=":")
@@ -347,7 +346,9 @@ def write_report(results: list[CvResult], split: Split, settings: cfg.Settings) 
     ax.set_yticks(list(positions))
     ax.set_yticklabels(labels)
     ax.set_ylim(-0.8, len(ordered) - 0.2)
-    ax.set_xlim(0.45, 1.0)
+    # Truncated at 0.45, which the guard permits only because chance stays on the chart
+    # and every mark carries its whisker. See plotting.metric_axis and D-018.
+    viz.metric_axis(ax, 0.45, 1.0, chance=0.5)
     ax.set_xlabel("Cross-validated ROC-AUC, 5-fold on the training split (whisker = ±1 SD)")
     margin = winner.mean_auc - linear.mean_auc if linear else 0.0
     beats_noise = bool(linear and margin > linear.std_auc)

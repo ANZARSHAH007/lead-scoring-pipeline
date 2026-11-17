@@ -67,7 +67,7 @@ Without Docker (current state of this machine — see OQ-3): `make serve` runs U
 
 **[planned]** `.github/workflows/ci.yml`, as specified in doc 10:
 
-- **every push:** install from lockfile → `ruff` → `pytest` (fixtures only) → `docker build` → run the image and poll `/health`
+- **every push:** install from `requirements.lock` → `scripts/doctor.py` → `ruff` → `pytest` (synthetic fixture only, no dataset needed — `src/leadscore/fixtures.py`) → `docker build` → run the image and poll `/health`
 - **`main` only:** download the dataset with the Kaggle secret → `make train` → the model quality gate → upload `model.joblib` and `model_card.json` as build artifacts
 
 Deployment stays **manual** in P1. A push that passes CI does not ship a model; a human looks at the gate's numbers and the reliability curve and then deploys. Automatic model promotion needs monitoring that P1 does not have, and pretending otherwise would be the kind of shortcut the roadmap exists to avoid.
@@ -118,6 +118,8 @@ What is missing and known: no alerting, no error aggregation, no dashboard of dr
 
 ## Release checklist
 
+- [ ] `scripts/doctor.py` exits 0 on the deploy machine
+- [ ] `requirements.lock` matches the environment CI built from
 - [ ] CI green on `main`, quality gate passed, numbers recorded in doc 14
 - [ ] `model_card.json` metrics filled from a real run, no `null`s
 - [ ] README results table matches the card

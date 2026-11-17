@@ -208,6 +208,13 @@ class Settings(BaseSettings):
     model_path: Path = Field(default=Path("models/model.joblib"))
     model_card_path: Path = Field(default=Path("models/model_card.json"))
     db_path: Path = Field(default=Path("data/predictions.db"))
+    reports_dir: Path = Field(
+        default=Path("reports"),
+        description=(
+            "Where generated reports and figures land. Overridden in tests and CI so a "
+            "fixture run can never overwrite a report built from the real data."
+        ),
+    )
 
     # --- training ---
     random_seed: int = Field(default=42, ge=0)
@@ -270,7 +277,7 @@ class Settings(BaseSettings):
         ),
     )
 
-    @field_validator("data_raw", "model_path", "model_card_path", "db_path")
+    @field_validator("data_raw", "model_path", "model_card_path", "db_path", "reports_dir")
     @classmethod
     def _no_empty_path(cls, value: Path) -> Path:
         if str(value).strip() in {"", "."}:
@@ -285,6 +292,11 @@ class Settings(BaseSettings):
                 f"(got B={self.grade_b_percentile}, A={self.grade_a_percentile})"
             )
         return self
+
+    @property
+    def figures_dir(self) -> Path:
+        """Charts live beside the reports that embed them."""
+        return self.reports_dir / "figures"
 
     @property
     def grade_band_policy(self) -> dict[str, float]:

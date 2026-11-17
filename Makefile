@@ -12,15 +12,18 @@ else
 	BIN := $(VENV)/bin
 endif
 
-.PHONY: help venv install install-min lint format test test-cov train serve dashboard docker clean
+.PHONY: help venv install install-min lock doctor lint format test test-cov smoke train serve dashboard docker clean
 
 help:
 	@echo "venv         create $(VENV) with $(PY)"
 	@echo "install      install the project and dev tools (full ML stack, large)"
 	@echo "install-min  install only what the current phase needs (config + tests)"
+	@echo "lock         rewrite requirements.lock from the current environment"
+	@echo "doctor       check this machine can run the pipeline, in ~2 seconds"
 	@echo "lint         ruff check"
 	@echo "format       ruff format"
 	@echo "test         pytest"
+	@echo "smoke        run the whole chain on the synthetic fixture, no real data"
 	@echo "test-cov     pytest with coverage"
 	@echo "train        train a model, write models/ artifacts   [Phase 3+]"
 	@echo "serve        run the API on :8000                     [Phase 5+]"
@@ -39,6 +42,16 @@ install:
 install-min:
 	$(BIN)/python -m pip install "pydantic>=2.9" "pydantic-settings>=2.5" "pytest>=8.3" "ruff>=0.7"
 
+# Pinned resolution of what actually works. Regenerate deliberately: a dependency that
+# moves on its own is how MLflow 3.18 broke tracking with no change on our side (D-017).
+lock:
+	$(BIN)/python -m pip freeze --exclude-editable > requirements.lock
+
+# Run this before training and after any dependency change. Two seconds, and it answers
+# what a three-minute training run would otherwise tell you at the end.
+doctor:
+	$(BIN)/python scripts/doctor.py
+
 lint:
 	$(BIN)/ruff check src tests scripts
 
@@ -50,6 +63,11 @@ test:
 
 test-cov:
 	$(BIN)/python -m pytest --cov=leadscore --cov-report=term-missing
+
+# The whole pipeline on 300 synthetic rows: catches the failures that only appear when the
+# chain actually runs, in seconds rather than minutes. This is what CI runs on every push.
+smoke:
+	$(BIN)/python -m pytest tests/test_smoke.py -v
 
 train:
 	$(BIN)/python -m leadscore.train

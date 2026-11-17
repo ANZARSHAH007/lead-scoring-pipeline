@@ -46,8 +46,9 @@ python -m venv .venv
 .venv/Scripts/python -m pip install -e ".[dev]"     # Windows
 # .venv/bin/python -m pip install -e ".[dev]"       # macOS / Linux
 
-# 2. check it works
-.venv/Scripts/ruff check src tests
+# 2. check it works — doctor first: it names an environment fault in two seconds
+.venv/Scripts/python scripts/doctor.py
+.venv/Scripts/ruff check src tests scripts
 .venv/Scripts/python -m pytest
 
 # 3. data — not in this repo, see docs/06_DATABASE_DESIGN.md for why
@@ -65,6 +66,8 @@ docker compose up
 
 `uv` works too, with no change to this repo: `uv sync` in place of step 1.
 
+`requirements.lock` pins the exact resolution this project was built and tested against. `pyproject.toml` states what the project *needs*; the lockfile states what actually worked. Install from the lockfile when you want the tested environment rather than the newest one — a floating dependency is how MLflow retired a storage backend under this project mid-phase (docs/14, D-019).
+
 ### If you have `make`
 
 Each target is one command; `make help` lists them. `make` is not installed on the author's machine, so the raw equivalents above are the tested path:
@@ -73,7 +76,10 @@ Each target is one command; `make help` lists them. `make` is not installed on t
 | --- | --- |
 | `make venv` | `python -m venv .venv` |
 | `make install` | `.venv/Scripts/python -m pip install -e ".[dev]"` |
-| `make lint` | `.venv/Scripts/ruff check src tests` |
+| `make doctor` | `.venv/Scripts/python scripts/doctor.py` |
+| `make lint` | `.venv/Scripts/ruff check src tests scripts` |
+| `make smoke` | `.venv/Scripts/python -m pytest tests/test_smoke.py -v` |
+| `make lock` | `.venv/Scripts/python -m pip freeze --exclude-editable > requirements.lock` |
 | `make test` | `.venv/Scripts/python -m pytest` |
 | `make train` | `.venv/Scripts/python -m leadscore.train` |
 | `make serve` | `.venv/Scripts/python -m uvicorn leadscore.api.main:app --port 8000` |

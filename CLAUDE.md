@@ -70,6 +70,10 @@ When work is ready for review, end with: what changed and why, the verification 
 
 ## Session loop
 
-`read docs → plan → implement → test → review against docs → fix → commit → update docs`
+`doctor → read docs → plan → implement → test → review against docs → fix → commit → update docs`
+
+Start with `.venv/Scripts/python scripts/doctor.py`. It takes two seconds and tells an
+environment fault from a code fault; Phase 3 lost a training run to each kind. When the smoke
+test (`make smoke`) fails, run doctor before reading any code.
 
 Commit messages: imperative subject under 72 characters, body saying why. One logical change per commit.
