@@ -76,12 +76,12 @@ Dependencies use task IDs. Priority: **P0** = P1 fails without it, **P1** = plan
 
 | ID | Task | Feature | Depends | Pri | Expected outcome | Acceptance criterion | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-501 | Move notebook code into `src/leadscore/`; `make train` end to end | M4 | T-407 | P0 | one command trains and writes artifacts | clean clone + CSV → both artifacts | Not started |
-| T-502 | `api/schemas.py` — Pydantic request/response models | S1 | T-501 | P0 | typed boundary | 422 on a negative visit count | Not started |
-| T-503 | `api/main.py` — five endpoints, model loaded in lifespan | S1 | T-502 | P0 | the service | `/health` returns the model version | Not started |
-| T-504 | `api/store.py` + SQLite DDL; log every score | M7 | T-503 | P0 | measurable in production | 1,000 scores → 1,000 rows | Not started |
-| T-505 | `/feedback` endpoint | M7 | T-504 | **P2** | the retraining loop's inlet | unknown `prospect_id` → 404, nothing written | Not started |
-| T-506 | `test_api.py` — contract, validation, batch cap, latency | S1 | T-503 | P0 | the API cannot regress silently | all pass; p95 latency recorded | Not started |
+| T-501 | Move notebook code into `src/leadscore/`; `make train` end to end | M4 | T-407 | P0 | one command trains and writes artifacts | clean clone + CSV → both artifacts | **Done (verified)** 2026-11-19 — nothing was ever in a notebook (D-015); `python -m leadscore.train` runs load → validate → split → select → evaluate once → gate → write `models/` and `reports/` end to end |
+| T-502 | `api/schemas.py` — Pydantic request/response models | S1 | T-501 | P0 | typed boundary | 422 on a negative visit count | **Done (verified)** 2026-11-19 — 13 fields, one per admissible column, `extra="forbid"`; a negative `total_visits` returns 422 naming the field, and `last_activity` is refused rather than ignored (D-025) |
+| T-503 | `api/main.py` — five endpoints, model loaded in lifespan | S1 | T-502 | P0 | the service | `/health` returns the model version | **Done (verified)** 2026-11-19 — five endpoints, model and explainer loaded in the lifespan hook; `/health` returned `20261118-6ae06cc8` from a live server, and the app refuses to start without a model |
+| T-504 | `api/store.py` + SQLite DDL; log every score | M7 | T-503 | P0 | measurable in production | 1,000 scores → 1,000 rows | **Done (verified)** 2026-11-19 — SQLite log with WAL, predictions and feedback in separate tables; a 20-lead batch writes 20 rows under one `request_id`, and a failed write still returns a score |
+| T-505 | `/feedback` endpoint | M7 | T-504 | **P2** | the retraining loop's inlet | unknown `prospect_id` → 404, nothing written | **Done (verified)** 2026-11-19 — kept despite being P2, since the hours were there; 404 for an unscored lead with nothing written, 409 for a duplicate, and `live_accuracy()` becomes computable once outcomes arrive |
+| T-506 | `test_api.py` — contract, validation, batch cap, latency | S1 | T-503 | P0 | the API cannot regress silently | all pass; p95 latency recorded | **Done (verified)** 2026-11-19 — 37 contract tests on a fixture-trained model; p95 latency is read back out of the prediction log and asserted under the 300 ms target |
 
 ### Phase 6 — Package, demo, CI (Session 10)
 

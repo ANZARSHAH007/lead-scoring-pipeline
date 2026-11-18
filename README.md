@@ -64,11 +64,54 @@ python -m venv .venv
 # 4. train (writes models/model.joblib + models/model_card.json)   [from Phase 3]
 .venv/Scripts/python -m leadscore.train
 
-# 5. serve API + dashboard                                          [from Phase 6]
+# 5. serve the API                                                  [from Phase 5]
+.venv/Scripts/python -m uvicorn leadscore.api.main:app --port 8000
+#    interactive docs  http://localhost:8000/docs
+
+# 6. both services in containers                                    [from Phase 6]
 docker compose up
 #    API       http://localhost:8000/docs
 #    Dashboard http://localhost:8501
 ```
+
+### Scoring a lead
+
+The API serves whatever model `models/model.joblib` holds, and reads its grade cut-offs from
+the model card, so the numbers below move when the model does rather than when someone edits
+serving code.
+
+```bash
+curl -X POST http://localhost:8000/score \
+  -H "content-type: application/json" \
+  -d '{
+    "prospect_id": "demo-1",
+    "lead_origin": "Lead Add Form",
+    "lead_source": "Reference",
+    "total_time_spent_on_website": 1532,
+    "total_visits": 5,
+    "current_occupation": "Working Professional"
+  }'
+```
+
+```json
+{
+  "prospect_id": "demo-1",
+  "score": 92,
+  "grade": "A",
+  "reasons": [
+    {"feature": "current_occupation", "direction": "up", "text": "Is working or self-employed, which converts well"},
+    {"feature": "total_time_spent_on_website", "direction": "up", "text": "Spent a long time on the website"},
+    {"feature": "lead_origin", "direction": "up", "text": "Arrived through a channel that converts well"}
+  ],
+  "model_version": "20261118-6ae06cc8"
+}
+```
+
+That is a real response from a real run, trimmed for width. A lead with nothing known and no
+time on the site scores **4, grade C** from the same model. The request accepts only the 13
+columns known when a lead arrives — send `last_activity` and you get a `422`, because that
+column is filled in *after* sales has made contact and the model is not allowed to see it.
+Full contract in [docs/07_API_DOCUMENTATION.md](docs/07_API_DOCUMENTATION.md).
 
 `uv` works too, with no change to this repo: `uv sync` in place of step 1.
 

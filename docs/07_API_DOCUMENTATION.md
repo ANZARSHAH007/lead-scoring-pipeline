@@ -6,6 +6,13 @@ Base URL, local: `http://localhost:8000`
 
 All payload values below are **shapes, not results** — real values come from the dataset.
 
+**Built 2026-11-19 (T-502 to T-506).** Two things changed from this document's first draft, both recorded in docs/14:
+
+- `last_activity` is **gone from the request**. The activity columns were excluded as leakage (D-016), so the model cannot use it; accepting the field would tell a caller it matters (D-025). Sending it now returns `422`.
+- `how_did_you_hear` was **added**: it is one of the 13 admissible columns and the first draft omitted it.
+
+The request body therefore carries exactly the 13 source columns the shipping model was fitted on, and `tests/test_api.py` asserts that correspondence rather than trusting it.
+
 ## Conventions
 
 - Field names are `snake_case`, lower-cased versions of the CSV columns.
@@ -33,7 +40,7 @@ Cheap, no model inference. Used by Docker, CI smoke tests and the host's health 
 ```json
 {
   "status": "ok",
-  "model_version": "lgbm-2026-11-26",
+  "model_version": "20261118-6ae06cc8",
   "model_loaded": true,
   "uptime_seconds": 4213
 }
@@ -49,16 +56,18 @@ Everything the dashboard's model card page needs, read from `model_card.json`. N
 
 ```json
 {
-  "model_version": "lgbm-2026-11-26",
-  "trained_at": "2026-11-26T18:40:00Z",
-  "algorithm": "LightGBM + CalibratedClassifierCV(sigmoid)",
-  "features": ["lead_origin", "lead_source", "total_visits", "..."],
+  "model_version": "20261118-6ae06cc8",
+  "trained_at": "2026-11-18T15:32:10+00:00",
+  "algorithm": "LightGBM, Optuna-tuned",
+  "features": ["total_visits", "total_time_spent_on_website", "..."],
   "excluded_as_leakage": ["Tags", "Lead Quality", "Asymmetrique Activity Index", "..."],
-  "metrics": {"roc_auc": 0.0, "pr_auc": 0.0, "brier": 0.0, "capture_at_20": 0.0},
-  "baselines": {"one_rule": {"roc_auc": 0.0, "capture_at_20": 0.0}},
-  "grade_bands": {"A": {"min_score": 0}, "B": {"min_score": 0}, "C": {"min_score": 0}},
-  "limits": ["Ranks leads; it does not decide whether to contact one.", "..."]
+  "metrics": {"roc_auc": 0.864536, "pr_auc": 0.805037, "brier": 0.141977, "capture_at_20": 0.441011},
+  "baselines": {"one_rule": {"roc_auc": 0.645973, "capture_at_20": 0.352528}},
+  "grade_bands": {"A": {"min_score": 76}, "B": {"min_score": 26}, "C": {"min_score": 0}},
+  "limits": ["Scores one public dataset of 9,240 leads...", "..."]
 }
+
+Every value above is read from `models/model_card.json`. The `algorithm` string says what was actually done: on the shipped model no calibrator was applied, because none improved out-of-fold Brier (D-020). The grade bands are the cut-offs that run produced — the API never hardcodes them, which is what lets a retrain move them without a code change.
 ```
 
 ---
@@ -84,7 +93,7 @@ Scores one lead using only fields known at arrival.
   "what_matters_most": "Better Career Prospects",
   "city": "Mumbai",
   "country": "India",
-  "last_activity": "SMS Sent"
+  "how_did_you_hear": "Online Search"
 }
 ```
 
@@ -97,7 +106,7 @@ Scores one lead using only fields known at arrival.
 | `total_visits` | int | no | **≥ 0**; negative → 422 |
 | `total_time_spent_on_website` | int | yes | **≥ 0**, seconds |
 | `page_views_per_visit` | float | no | **≥ 0** |
-| `specialization`, `current_occupation`, `what_matters_most`, `city`, `country`, `last_activity` | string | no | `"Select"` is accepted and treated as missing |
+| `specialization`, `current_occupation`, `what_matters_most`, `city`, `country`, `how_did_you_hear` | string | no | `"Select"` is accepted and treated as missing, as are blanks |
 
 Unknown extra fields are rejected (`extra="forbid"`), so a typo'd field name fails loudly instead of being silently dropped and scored wrong.
 
@@ -176,7 +185,7 @@ This endpoint is **P2** on the cut list: it is the first thing dropped if the 20
 - An unseen category value never errors — it maps to `Other` inside the fitted transformer.
 - A failed prediction-log write never fails the response.
 - No endpoint mutates the model. Retraining happens offline, out of band.
-- Latency targets: p95 < 300 ms for `/score`, 1,000 leads in < 10 s for `/score/batch` (NFR-1, NFR-2), measured from the log's `latency_ms`.
+- Latency targets: p95 < 300 ms for `/score`, 1,000 leads in < 10 s for `/score/batch` (NFR-1, NFR-2), measured from the log's `latency_ms`. `test_api.py` reads the p95 back out of the prediction log and fails if it exceeds the target, so the number is measured rather than asserted.
 
 ## What the API deliberately does not do
 

@@ -382,6 +382,41 @@ the real card before and after a full test run: unchanged.
 only as good as the author's memory. A guard that enumerates its subject is as good as the
 code.
 
+### D-024 - The test client needs `httpx2`, not `httpx`
+
+**Date** 2026-11-19 - **Status** accepted
+
+`pyproject.toml` had carried `httpx>=0.27` in its dev extras since Phase 1, written from
+memory of how FastAPI's `TestClient` used to work. Starlette 1.10 moved the client onto
+`httpx2`, and the import fails outright with a message naming the right package - which is
+the good kind of upstream change, because it cannot be mistaken for anything else.
+
+The dev extra now reads `httpx2>=0.1`, the lockfile pins `httpx2==2.16.2`, and the comment
+beside it says why so that nobody "fixes" it back. This is the third time a floating
+dependency has moved under this project (D-017, D-019), and the third time the lockfile is
+what makes the fix stick.
+
+### D-025 - The API refuses `last_activity` rather than ignoring it
+
+**Date** 2026-11-19 - **Status** accepted
+
+The first draft of docs/07 listed `last_activity` in the request body. That was written
+before D-016 excluded the activity columns as leakage, so the shipping model has no such
+feature and could not use the value if it arrived.
+
+Three options, and the middle one is the trap:
+
+1. **accept and use it** - impossible; the fitted transformer has no such column;
+2. **accept and ignore it** - the API would take a field, say nothing, and return a score
+   that the caller believes was informed by it. A quiet lie at the boundary;
+3. **refuse it** - `extra="forbid"` returns 422 naming the field.
+
+Option 3. A caller who sends it learns immediately, from the error, that this model does not
+use post-contact information - which is the single most important thing to understand about
+this project. The request body now carries exactly the 13 admissible columns, docs/07 says
+so, and `test_api.py` asserts the field map matches `config.shipping_features()` so the two
+cannot drift apart.
+
 ---
 
 ## Changelog
@@ -663,6 +698,56 @@ is no longer something a human has to verify by eye.
 **Verified:** `ruff check src tests scripts` clean; **192 tests pass**; `scripts/doctor.py`
 exits 0; the pipeline run writes `models/model.joblib`, `models/model_card.json`,
 `reports/04_evaluation.md` and three figures, and reports `test_set_openings: 1`.
+
+### 2026-11-19 - Phase 5: the API
+
+Five endpoints over the artifact Phase 4 wrote. The service fits nothing: it loads
+`models/model.joblib` and `models/model_card.json` once in the lifespan hook, and every
+number it serves - the grade cut-offs, the published metrics, the feature list - comes from
+that card. Retrain the model and the API's answers change with it, with no code edit.
+
+**Verified against a live server, not only in tests.** `uvicorn` on port 8000, real model
+`20261118-6ae06cc8`:
+
+| Request | Result |
+| --- | --- |
+| Working professional, referral, 1,532 s on site | score **92**, grade **A** |
+| Landing page, nothing known, 0 s on site | score **4**, grade **C** |
+| `total_visits: -1` | `422`, `{"code": "validation_error", "field": "total_visits"}` |
+| `/feedback` for an unscored lead | `404`, `prospect_not_found`, nothing written |
+| the same outcome twice | `409`, `already_reported` |
+| batch of 3 | 3 results in order, one `request_id` |
+
+The reasons that came back for the first lead were "is working or self-employed, which
+converts well", "spent a long time on the website" and "arrived through a channel that
+converts well" - which is the error analysis from Phase 4 visible from the outside: the model
+leans on the referral channel.
+
+**What was built.** `api/schemas.py` (13 request fields, one per admissible column,
+`extra="forbid"`), `api/store.py` (SQLite prediction log, WAL, predictions and feedback in
+separate tables), `api/main.py` (the five endpoints, one error shape, no traceback ever
+reaches a caller), and `tests/test_api.py` - **37 contract tests** against a fixture-trained
+model, so CI holds the API to docs/07 on every push with no dataset.
+
+**Three things worth recording.**
+
+1. **`last_activity` is refused, not ignored** (D-025). docs/07's first draft listed it;
+   D-016 had already excluded the activity columns. Accepting a field the model cannot use
+   would be a quiet lie at the boundary, so it returns 422 and the doc was corrected.
+2. **`httpx` is now `httpx2`** (D-024). Starlette 1.10 moved `TestClient` onto it, and the
+   dev extra had been wrong since Phase 1 - invisible until something imported it.
+3. **Two deprecated status constants were mine, not upstream's.** `HTTP_422_UNPROCESSABLE_ENTITY`
+   and `HTTP_413_REQUEST_ENTITY_TOO_LARGE` are renamed in Starlette 1.10; the codes are
+   unchanged. Fixed rather than silenced, because a deprecation in our own code is the kind
+   this project's warning filter exists to surface.
+
+**`/feedback` shipped although it is P2 on the cut list.** The cut list exists for when time
+is short; the hours were there, and it is the inlet for the retraining loop that P7 depends
+on. `live_accuracy()` on the log becomes computable the moment real outcomes arrive.
+
+**Verified:** `ruff check src tests scripts` clean; **229 tests pass** (192 + 37); p95
+latency read back from the prediction log is well inside the 300 ms target; the prediction
+database is git-ignored and nothing from a run reaches the repo.
 
 ### Next entry
 
