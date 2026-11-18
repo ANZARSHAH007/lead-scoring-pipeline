@@ -25,6 +25,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # The raw dataset's shape. Checked by schema.py (Phase 2) so drift is loud.
 # ---------------------------------------------------------------------------
 
+#: The repository root, derived from this file's location rather than the working
+#: directory. `src/leadscore/config.py` -> up three -> the repo.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def resolve(path: Path) -> Path:
+    """Turn a configured path into an absolute one, against the project root.
+
+    Every path in `Settings` has a *relative* default, because a default that embedded one
+    machine's directory layout would be useless to anyone else. Relative to what, though, is
+    a decision: relative to the current directory means `python scripts/eda.py` from a
+    subfolder quietly writes its report somewhere new, which is how a reports path ends up
+    hardcoded from `__file__` to avoid the problem. Relative to the project root means the
+    pipeline behaves the same from anywhere, and an absolute override — a temporary directory
+    in a test, a mounted volume in a container — is still passed through untouched.
+    """
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
 TARGET = "Converted"
 EXPECTED_ROWS = 9_240
 EXPECTED_COLUMNS = 37

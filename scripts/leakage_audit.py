@@ -38,8 +38,10 @@ from leadscore import config as cfg  # noqa: E402
 from leadscore import plotting as viz  # noqa: E402
 from leadscore import schema as sch  # noqa: E402
 
-REPORTS = ROOT / "reports"
-FIGURES = REPORTS / "figures"
+# Configured, not hardcoded: `LEADSCORE_REPORTS_DIR` moves both, and a relative
+# value is read against the project root rather than the working directory.
+REPORTS = cfg.resolve(cfg.get_settings().reports_dir)
+FIGURES = cfg.resolve(cfg.get_settings().figures_dir)
 NEAR_CONSTANT_SHARE = 0.95
 
 

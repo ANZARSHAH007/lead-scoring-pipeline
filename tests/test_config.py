@@ -189,3 +189,37 @@ def test_default_grade_policy_matches_the_documented_twenty_thirty_split() -> No
     s = cfg.Settings(_env_file=None)
     assert s.grade_a_percentile == pytest.approx(0.80), "grade A is the top 20% (docs/02 FR-6)"
     assert s.grade_b_percentile == pytest.approx(0.50), "grade B is the next 30%"
+
+
+# ---------------------------------------------------------------------------
+# paths: relative defaults, resolved against the project root (task T-112)
+# ---------------------------------------------------------------------------
+
+
+def test_the_project_root_is_the_repository_root() -> None:
+    assert (cfg.PROJECT_ROOT / "pyproject.toml").exists()
+    assert (cfg.PROJECT_ROOT / "src" / "leadscore" / "config.py").exists()
+
+
+def test_a_relative_path_resolves_against_the_project_root_not_the_cwd(tmp_path, monkeypatch) -> None:
+    """The bug this prevents: running a script from a subfolder writing reports elsewhere."""
+    monkeypatch.chdir(tmp_path)
+    assert cfg.resolve(Path("reports")) == cfg.PROJECT_ROOT / "reports"
+
+
+def test_an_absolute_path_is_passed_through_untouched(tmp_path) -> None:
+    """Tests and containers override with absolute paths; those must not be rewritten."""
+    assert cfg.resolve(tmp_path / "reports") == tmp_path / "reports"
+
+
+def test_the_reports_directory_defaults_to_the_real_one() -> None:
+    settings = cfg.Settings(_env_file=None)
+    assert settings.reports_dir == Path("reports")
+    assert settings.figures_dir == Path("reports") / "figures"
+
+
+def test_the_reports_directory_is_overridable_by_environment(monkeypatch) -> None:
+    monkeypatch.setenv("LEADSCORE_REPORTS_DIR", "/tmp/elsewhere")
+    settings = cfg.Settings(_env_file=None)
+    assert settings.reports_dir == Path("/tmp/elsewhere")
+    assert settings.figures_dir == Path("/tmp/elsewhere") / "figures"

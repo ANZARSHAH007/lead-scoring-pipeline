@@ -261,30 +261,44 @@ remembered from a doc. Eight tests in `test_plotting.py` hold it.
 **Rejected:** writing the rule into docs/08 and relying on care. The mistake was made *after*
 docs/08 was written, by the author of docs/08.
 
-### D-019 — Dependencies are pinned in `requirements.lock`; one upstream warning is allowed
+### D-019 — Dependencies are pinned in `requirements.lock`, and `sqlalchemy` stays below 2.1
 
-**Date** 2026-11-17 · **Status** accepted
+**Date** 2026-11-17, revised 2026-11-18 · **Status** accepted
 
 Two of Phase 3's three bugs were environment facts, not logic: MLflow had moved to 3.18 under
 a floating `mlflow>=2.16` bound and retired the plain file store, and the package was never
 installed, so `python -m leadscore.train` could not import it. Neither was visible to `ruff`
 or to 81 unit tests.
 
-So: `requirements.lock` pins the 110-package resolution that actually works, the pyproject
+So: `requirements.lock` pins the 111-package resolution that actually works, the pyproject
 floor is raised to `mlflow>=3.1` so a 2.x file store cannot return, and `scripts/doctor.py`
 proves the configured store accepts a run by writing a probe run into a temporary database
 rather than trusting the URI string.
 
-One consequence is recorded rather than hidden: MLflow 3.18 reads runs through SQLAlchemy's
-`noload` strategy, which SQLAlchemy 2.1 deprecates, and this project's pytest config turns
-`DeprecationWarning` into an error. The global filter stays strict; a single message-matched
-`ignore` is added with a comment naming this decision. It is an upstream deprecation in a
-pinned dependency, so it cannot change under us without a deliberate upgrade, and the next
-MLflow upgrade should try deleting the line.
+**The SQLAlchemy pin.** Adding the lockfile surfaced a second-order problem. MLflow 3.18
+declares `lazy="noload"` on a relationship in its *MCP server registry* tables — code this
+project never calls — and SQLAlchemy 2.1 deprecates that loader strategy. The warning is
+emitted when SQLAlchemy configures its mappers, which the first query triggers, so no change
+to how this project reads runs can avoid it, and this project's pytest config turns
+`DeprecationWarning` into an error.
+
+The first attempt was a message-matched `ignore` in `filterwarnings`. That was wrong, and it
+was reverted on 2026-11-18: a suppressed warning is a warning that is still there, and a
+project with one exception in its filter soon has four. Nothing in the dependency set needs
+2.1 — `alembic` wants `>=2.0`, `optuna` `>=1.4.2`, MLflow `>=1.4,<3` — so the condition
+itself was removed: `sqlalchemy>=2.0,<2.1` in pyproject, `SQLAlchemy==2.0.58` in the lockfile.
+`filterwarnings` is back to a single strict line with no exceptions, and 103 tests pass with
+nothing silenced.
+
+Revisit when MLflow drops the deprecated strategy; the pin is then deleted, not widened.
 
 **Rejected:** relaxing `error::DeprecationWarning` to a warning. That filter is how a
 deprecation in our own code gets noticed; trading it away to silence someone else's would cost
 more than it saves.
+
+**Rejected:** keeping the narrow `ignore`. It works, and it hides a fact about the dependency
+set behind a line in a config file. Pinning states the same fact where a reader installing the
+project will see it.
 
 ---
 
@@ -449,7 +463,7 @@ work. Fixing the class took the rest of the session, and is what follows.
 
 | Bug | Instance fix | Class fix |
 | --- | --- | --- |
-| MLflow 3.18 refuses `file:./mlruns` | tracking URI → `sqlite:///mlflow.db` (D-017) | `requirements.lock` pins 110 packages; pyproject floor raised to `mlflow>=3.1`; `doctor.py` writes a probe run to prove the store accepts one (D-019) |
+| MLflow 3.18 refuses `file:./mlruns` | tracking URI → `sqlite:///mlflow.db` (D-017) | `requirements.lock` pins 111 packages; pyproject floor raised to `mlflow>=3.1`; `doctor.py` writes a probe run to prove the store accepts one (D-019) |
 | `python -m leadscore.train` could not import the package | `pip install -e . --no-deps` (D-017) | `doctor.py` checks the import *and* that it resolves to this working tree, and prints the exact install command |
 | a bar chart truncated at 0.45 exaggerated a 0.0146 gap | replaced with a dot-and-whisker | `plotting.metric_axis` raises when a truncated axis would hide the chance line (D-018) |
 
@@ -466,8 +480,22 @@ Two more guards came out of the same reasoning:
   synthetic numbers. Found while writing the smoke test, which is the sort of thing writing a
   smoke test finds. A test now asserts the default is still the real `reports/`, so the guard
   cannot be satisfied by weakening it.
+- **And then the same pattern, twice more.** `scripts/eda.py` and
+  `scripts/leakage_audit.py` each derived `REPORTS` from `__file__` as well. Nothing had
+  gone wrong there yet — no test runs those scripts — but it is the same latent bug, so
+  all three now go through `config.resolve()` (T-112), which reads a relative configured
+  path against the project root and passes an absolute one through untouched. Verified by
+  regenerating reports 01 and 02: both come out byte-identical, so the change moved the
+  decision without moving the output.
 
-**Verified:** `ruff check src tests scripts` clean; **103 tests pass** (81 + 22); `doctor.py`
+**One suppression was added and then removed.** The lockfile surfaced an upstream
+deprecation (MLflow 3.18's `lazy="noload"` under SQLAlchemy 2.1) and the first fix was a
+narrow `ignore` in `filterwarnings`. On 2026-11-18 that was reverted in favour of pinning
+`sqlalchemy>=2.0,<2.1`, which removes the condition instead of hiding it. Nothing in the
+dependency set needs 2.1. `filterwarnings` is one strict line again — see D-019.
+
+**Verified:** `ruff check src tests scripts` clean; **103 tests pass** (81 + 22) with
+nothing silenced; `doctor.py`
 exits 0 with two warnings (Streamlit not installed, a Phase 6 dependency — the lockfile
 warning is now resolved); the real training run reproduces 0.8825 ± 0.0045 with the chart and
 report paths changed.

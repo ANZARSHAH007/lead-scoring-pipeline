@@ -5,12 +5,15 @@
 # on our side (D-017). Lower bounds in pyproject.toml say what the project needs; this
 # file says what actually worked, so a second machine and CI install the same thing.
 #
+# One pin is deliberate rather than incidental: sqlalchemy stays below 2.1, because
+# MLflow 3.18 declares a `lazy="noload"` relationship that 2.1 deprecates (D-019).
+#
 # Regenerate deliberately, never casually:
 #   .venv/Scripts/python -m pip freeze --exclude-editable > requirements.lock
 #   .venv/Scripts/python scripts/doctor.py && .venv/Scripts/python -m pytest
 # then record the upgrade in docs/14.
 #
-# Generated 2026-11-17 on Python 3.11.9, Windows 11. 110 packages.
+# Generated 2026-11-18 on Python 3.11.9, Windows 11. 111 packages.
 
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.5
@@ -45,6 +48,7 @@ google-auth==2.62.2
 graphene==3.4.3
 graphql-core==3.2.14
 graphql-relay==3.2.0
+greenlet==3.5.6
 h11==0.16.0
 huey==3.5.4
 idna==3.20
@@ -105,7 +109,7 @@ six==1.17.0
 skops==0.16.0
 slicer==0.0.8
 smmap==5.0.3
-SQLAlchemy==2.1.9
+SQLAlchemy==2.0.58
 sqlparse==0.6.1
 starlette==1.10.0
 threadpoolctl==3.8.0

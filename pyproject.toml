@@ -23,6 +23,10 @@ dependencies = [
   "lightgbm>=4.5",
   "optuna>=3.6",
   "mlflow>=3.1",          # 3.x only: the plain file store was retired, see D-017
+  # Transitive, pinned on purpose: MLflow 3.18 declares a `lazy="noload"` relationship
+  # that SQLAlchemy 2.1 deprecates, which turns into a test failure under our strict
+  # warning filter. Nothing in the dependency set needs 2.1. Revisit when MLflow does.
+  "sqlalchemy>=2.0,<2.1",
   "shap>=0.46",
   "joblib>=1.4",
   "matplotlib>=3.9",
@@ -90,12 +94,6 @@ markers = [
   "needs_data: requires the real Leads.csv on disk (not run in CI on pull requests)",
   "needs_model: requires a trained model artifact",
 ]
-filterwarnings = [
-  # A deprecation in our own code is a failure, not a note.
-  "error::DeprecationWarning",
-  # One exception, and it is not ours: MLflow 3.18 reads runs with SQLAlchemy's `noload`
-  # strategy, which SQLAlchemy 2.1 deprecated. Both versions are pinned in
-  # requirements.lock, so this cannot change under us silently; re-check the line when
-  # MLflow is next upgraded and delete it if upstream has moved on. See docs/14, D-019.
-  "ignore:The ``noload`` loader strategy is deprecated:DeprecationWarning",
-]
+# A deprecation is a failure, with no exceptions. The one exception this project briefly
+# carried was removed by pinning sqlalchemy<2.1 instead of silencing it — see docs/14, D-019.
+filterwarnings = ["error::DeprecationWarning"]

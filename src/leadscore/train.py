@@ -302,8 +302,8 @@ def write_report(results: list[CvResult], split: Split, settings: cfg.Settings) 
 
     from leadscore import plotting as viz
 
-    reports = settings.reports_dir
-    figures = settings.figures_dir
+    reports = cfg.resolve(settings.reports_dir)
+    figures = cfg.resolve(settings.figures_dir)
     viz.apply_style()
 
     ranked = sorted(results, key=lambda r: r.mean_auc, reverse=True)
