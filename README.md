@@ -8,9 +8,13 @@ This is project P1 of a seven-project AI-engineering portfolio. The deliverable 
 
 ## The headline number
 
-> If sales calls only the top 20% of scored leads, they reach **X%** of all conversions.
+<!-- headline:start -->
+> If sales calls only the top 20% of scored leads, they reach **44.1%** of all conversions.
 
-`X` is **Capture@20%**, measured on a held-out test set and published in the results table below once the first full run completes. Every other metric supports this one.
+Measured once on 1,848 held-out leads the model never saw (fingerprint `e30abe9c3fe596c1`), by model version `20261118-6ae06cc8`. Quality gate: **passed**.
+<!-- headline:end -->
+
+**Capture@20%** is the headline metric, and every other metric supports it. The block above is generated from `models/model_card.json` by `scripts/publish_results.py`, so the README and the card cannot disagree.
 
 ## What it does
 
@@ -24,15 +28,17 @@ This is project P1 of a seven-project AI-engineering portfolio. The deliverable 
 
 ## Results
 
-Filled in after Session 6. Not published until measured.
+Generated from the model card. Every row is one pass over the same 1,848 held-out leads; full detail in [reports/04_evaluation.md](reports/04_evaluation.md).
 
+<!-- results:start -->
 | Model | ROC-AUC | PR-AUC | Brier | Capture@20% |
-| --- | --- | --- | --- | --- |
-| Random baseline | 0.500 | — | — | 20.0% |
-| One-rule (time on site) | — | — | — | — |
-| Logistic regression | — | — | — | — |
-| **LightGBM (calibrated)** | — | — | — | — |
-| LightGBM + sales columns *(leakage, not shippable)* | — | — | — | — |
+| --- | ---: | ---: | ---: | ---: |
+| Random baseline | 0.500 | 0.385 | 0.250 | 20.2% |
+| One-rule (time on site) | 0.646 | 0.569 | 0.241 | 35.3% |
+| Logistic regression | 0.850 | 0.777 | 0.152 | 42.6% |
+| **LightGBM (tuned, no calibrator needed)** | 0.865 | 0.805 | 0.142 | 44.1% |
+| LightGBM + sales columns *(leakage, not shippable)* | 0.984 | 0.977 | 0.043 | 51.5% |
+<!-- results:end -->
 
 The last row is deliberate: it shows how much accuracy comes from columns that only exist *after* sales has already called the lead. See [docs/02_PRODUCT_REQUIREMENTS.md](docs/02_PRODUCT_REQUIREMENTS.md).
 
@@ -82,6 +88,7 @@ Each target is one command; `make help` lists them. `make` is not installed on t
 | `make lock` | `.venv/Scripts/python -m pip freeze --exclude-editable > requirements.lock` |
 | `make test` | `.venv/Scripts/python -m pytest` |
 | `make train` | `.venv/Scripts/python -m leadscore.train` |
+| `make publish` | `.venv/Scripts/python scripts/publish_results.py` |
 | `make serve` | `.venv/Scripts/python -m uvicorn leadscore.api.main:app --port 8000` |
 
 ## Documentation

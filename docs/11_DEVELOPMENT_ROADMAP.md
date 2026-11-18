@@ -64,13 +64,13 @@ Dependencies use task IDs. Priority: **P0** = P1 fails without it, **P1** = plan
 
 | ID | Task | Feature | Depends | Pri | Expected outcome | Acceptance criterion | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-401 | Reliability curve + Brier; calibrate if off-diagonal | M5 | T-305 | P0 | a score that means a probability | curve plotted; Brier recorded before and after | Not started |
-| T-402 | Grade cut-offs A/B/C from validation data → model card | M5 | T-401 | P0 | bands nobody hardcodes | `/model-info` later serves these exact numbers | Not started |
-| T-403 | `evaluate.py` — ROC-AUC, PR-AUC, Brier, Capture@20%, decile lift | M5 | T-401 | P0 | the published metrics | all four computed on the single test-set pass | Not started |
-| T-404 | Quality gate function + thresholds written into config | M5 | T-403 | P0 | a worse model cannot ship | a deliberately crippled model is rejected | Not started |
-| T-405 | `explain.py` — SHAP top-3 + phrase map | M6 | T-403 | P0 | three readable reasons | every admissible feature has both directions mapped | Not started |
-| T-406 | Error analysis: 20 high-score non-converters, 20 low-score converters | M5 | T-403 | P1 | written list of what the model misses | findings recorded in the notebook and doc 14 | Not started |
-| T-407 | Write `models/model_card.json` + the README results table | M4 | T-403 | P0 | the headline number published | five rows, four columns, all from real runs | Not started |
+| T-401 | Reliability curve + Brier; calibrate if off-diagonal | M5 | T-305 | P0 | a score that means a probability | curve plotted; Brier recorded before and after | **Done (verified)** 2026-11-18 — out-of-fold Brier: raw 0.13119, sigmoid 0.13145, isotonic 0.13195. **No calibrator won**, so none was applied (D-020); the reliability curve is in report 04 |
+| T-402 | Grade cut-offs A/B/C from validation data → model card | M5 | T-401 | P0 | bands nobody hardcodes | `/model-info` later serves these exact numbers | **Done (verified)** 2026-11-18 — A from score 76, B from 26, set on out-of-fold validation scores and stored in the card, never hardcoded |
+| T-403 | `evaluate.py` — ROC-AUC, PR-AUC, Brier, Capture@20%, decile lift | M5 | T-401 | P0 | the published metrics | all four computed on the single test-set pass | **Done (verified)** 2026-11-18 — one pass over 1,848 held-out rows for all five models; the card records `test_set_openings: 1` and a fingerprint of the row ids |
+| T-404 | Quality gate function + thresholds written into config | M5 | T-403 | P0 | a worse model cannot ship | a deliberately crippled model is rejected | **Done (verified)** 2026-11-18 — 5 checks, all passed; a label-shuffled model is rejected in `test_model_quality.py`, and a failing gate stops the artifact being written at all |
+| T-405 | `explain.py` — SHAP top-3 + phrase map | M6 | T-403 | P0 | three readable reasons | every admissible feature has both directions mapped | **Done (verified)** 2026-11-18 — 13/13 admissible columns mapped in both directions, 19 tests, including one that checks the attribution sign follows the data |
+| T-406 | Error analysis: 20 high-score non-converters, 20 low-score converters | M5 | T-403 | P1 | written list of what the model misses | findings recorded in the notebook and doc 14 | **Done (verified)** 2026-11-18 — both groups in report 04 with computed findings; the referral-channel pattern is recorded in docs/14 |
+| T-407 | Write `models/model_card.json` + the README results table | M4 | T-403 | P0 | the headline number published | five rows, four columns, all from real runs | **Done (verified)** 2026-11-18 — the README block is **generated** from the card by `scripts/publish_results.py`, with `--check` for CI, so the two cannot disagree |
 
 ### Phase 5 — Serving (Sessions 8–9)
 

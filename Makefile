@@ -12,7 +12,7 @@ else
 	BIN := $(VENV)/bin
 endif
 
-.PHONY: help venv install install-min lock doctor lint format test test-cov smoke train serve dashboard docker clean
+.PHONY: help venv install install-min lock doctor lint format test test-cov smoke train publish serve dashboard docker clean
 
 help:
 	@echo "venv         create $(VENV) with $(PY)"
@@ -25,7 +25,8 @@ help:
 	@echo "test         pytest"
 	@echo "smoke        run the whole chain on the synthetic fixture, no real data"
 	@echo "test-cov     pytest with coverage"
-	@echo "train        train a model, write models/ artifacts   [Phase 3+]"
+	@echo "train        train, evaluate once, write models/ + reports/  [Phase 3+]"
+	@echo "publish      fill the README numbers from the model card     [Phase 4+]"
 	@echo "serve        run the API on :8000                     [Phase 5+]"
 	@echo "dashboard    run the Streamlit dashboard on :8501     [Phase 6+]"
 	@echo "docker       build and run both services              [Phase 6+]"
@@ -71,6 +72,11 @@ smoke:
 
 train:
 	$(BIN)/python -m leadscore.train
+
+# Generated, never transcribed: the README's headline and results table come from
+# models/model_card.json. `--check` is the CI form, which reports drift and edits nothing.
+publish:
+	$(BIN)/python scripts/publish_results.py
 
 serve:
 	$(BIN)/python -m uvicorn leadscore.api.main:app --host 0.0.0.0 --port 8000 --reload

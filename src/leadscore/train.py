@@ -170,12 +170,22 @@ def cross_validate(
 # ---------------------------------------------------------------------------
 
 
-def build_lightgbm(params: dict[str, object], settings: cfg.Settings) -> Pipeline:
+def build_lightgbm(
+    params: dict[str, object],
+    settings: cfg.Settings,
+    name: cfg.FeatureSet = "shipping",
+) -> Pipeline:
+    """A LightGBM pipeline over a named feature set.
+
+    The feature set is a parameter because the results table has to include the leakage row:
+    the same model over the columns sales fills in afterwards, fitted and scored exactly like
+    the shipping model so the comparison is fair. It is built to be refused, not to ship.
+    """
     from lightgbm import LGBMClassifier
 
     return Pipeline(
         [
-            ("prep", ft.build_preprocessor("shipping", settings)),
+            ("prep", ft.build_preprocessor(name, settings)),
             (
                 "model",
                 LGBMClassifier(
@@ -250,12 +260,19 @@ def tune_lightgbm(split: Split, settings: cfg.Settings) -> CvResult:
 # ---------------------------------------------------------------------------
 
 
-def run_selection(settings: cfg.Settings | None = None) -> tuple[list[CvResult], Split]:
-    """Run every candidate on CV and return the results. The test set stays closed."""
-    from leadscore import schema as sch
+def run_selection(
+    settings: cfg.Settings | None = None, frame: pd.DataFrame | None = None
+) -> tuple[list[CvResult], Split]:
+    """Run every candidate on CV and return the results. The test set stays closed.
 
+    A `frame` is accepted so that a caller which has already validated the data does not
+    read and validate it twice; passing nothing loads it.
+    """
     settings = settings or cfg.Settings()
-    frame = sch.load_and_validate(settings.data_raw, settings)
+    if frame is None:
+        from leadscore import schema as sch
+
+        frame = sch.load_and_validate(settings.data_raw, settings)
     split = make_split(frame, "shipping", settings)
     LOGGER.info("split: %s", split.sizes)
 
@@ -433,31 +450,230 @@ def write_report(results: list[CvResult], split: Split, settings: cfg.Settings) 
     return path
 
 
+def ship(
+    frame: pd.DataFrame,
+    split: Split,
+    winner: CvResult,
+    settings: cfg.Settings,
+) -> dict[str, object]:
+    """Phase 4 (T-401 to T-407): calibrate, grade, open the test set once, gate, publish.
+
+    The order is the discipline. Calibration and the grade cut-offs are decided on the
+    training split alone; only then are the held-out rows read, once, for every model in the
+    results table at the same time. Nothing after that read changes the model - if the gate
+    fails, the artifacts are not written and the run exits non-zero.
+    """
+    from leadscore import evaluate as ev
+
+    params = dict(winner.params) or dict(DEFAULT_LGBM)
+    candidate = build_lightgbm(params, settings)
+
+    # 1. T-401 - calibration, judged out-of-fold on the training split
+    LOGGER.info("comparing calibrators on out-of-fold Brier (training split only)")
+    calibration = ev.choose_calibration(candidate, split.x_train, split.y_train, settings)
+    LOGGER.info("calibration chosen: %s", calibration.method)
+
+    # 2. T-402 - grade cut-offs from those same validation scores, never from the test set
+    cutoffs = ev.grade_cutoffs(calibration.oof_scores, settings)
+    LOGGER.info("grade cut-offs: A from %d, B from %d", cutoffs.a_from, cutoffs.b_from)
+
+    # The uncalibrated twin: it supplies the feature names and, later, SHAP explanations.
+    # Calibration is monotone, so it explains the same ranking the shipping model produces.
+    explainer_model = build_lightgbm(params, settings).fit(split.x_train, split.y_train)
+    feature_names = ft.feature_names(explainer_model.named_steps["prep"])
+
+    # 3. T-403 - the single pass. Every model is scored on the same held-out rows at once.
+    leakage_split = make_split(frame, "audit_with_leakage", settings)
+    models: dict[str, tuple[BaseEstimator, Split]] = {
+        **{name: (estimator, split) for name, estimator in build_candidates(settings).items()},
+        "lightgbm_shipped": (
+            ev.apply_calibration(candidate, calibration.method, settings),
+            split,
+        ),
+        "lightgbm_leakage": (
+            build_lightgbm(params, settings, "audit_with_leakage"),
+            leakage_split,
+        ),
+    }
+    metrics, scores = ev.evaluate_on_test(models, settings)
+
+    by_name = {m.name: m for m in metrics}
+    shipping_scores = scores["lightgbm_shipped"]
+    deciles = ev.decile_lift(split.y_test, shipping_scores)
+    reliability = ev.reliability_curve(split.y_test, shipping_scores)
+
+    # 4. T-404 - the gate, against this run's own baselines
+    gate = ev.quality_gate(
+        candidate=by_name["lightgbm_shipped"],
+        linear=by_name["logistic_regression"],
+        one_rule=by_name["one_rule"],
+        feature_names=feature_names,
+        settings=settings,
+    )
+
+    # 5. T-406 - error analysis, from the same single read
+    analysis = ev.error_analysis(split, shipping_scores, cutoffs)
+    patterns = ev.error_patterns(analysis)
+
+    # 6. T-407 - the card and the report
+    version = ev.model_version(params, feature_names, settings)
+    test_fingerprint = ev.fingerprint(split.x_test.index)
+    card = ev.build_model_card(
+        version=version,
+        selection={
+            "winner": winner.name,
+            "cv_roc_auc_mean": round(winner.mean_auc, 4),
+            "cv_roc_auc_std": round(winner.std_auc, 4),
+            "cv_folds": settings.cv_folds,
+            "optuna_trials": settings.optuna_trials,
+            "params": params,
+            "explanations_from": "uncalibrated LightGBM twin; calibration is monotone",
+        },
+        calibration=calibration,
+        cutoffs=cutoffs,
+        metrics=metrics,
+        gate=gate,
+        deciles=deciles,
+        split_sizes=split.sizes,
+        test_fingerprint=test_fingerprint,
+        feature_names=feature_names,
+    )
+    card_path = ev.write_model_card(card, settings)
+    report_path = ev.write_evaluation_report(
+        metrics=metrics,
+        deciles=deciles,
+        calibration=calibration,
+        cutoffs=cutoffs,
+        gate=gate,
+        reliability=reliability,
+        analysis=analysis,
+        patterns=patterns,
+        split=split,
+        settings=settings,
+        version=version,
+        test_fingerprint=test_fingerprint,
+    )
+
+    # 7. the artifact, written only if the gate passed
+    model_path = None
+    if gate.passed:
+        model_path = ev.save_model_bundle(
+            model=models["lightgbm_shipped"][0],
+            explainer_model=explainer_model,
+            card=card,
+            settings=settings,
+        )
+    else:
+        LOGGER.error("quality gate failed; the model was not written")
+
+    return {
+        "metrics": metrics,
+        "gate": gate,
+        "calibration": calibration,
+        "cutoffs": cutoffs,
+        "card_path": card_path,
+        "report_path": report_path,
+        "model_path": model_path,
+        "version": version,
+    }
+
+
+def log_final_to_mlflow(outcome: dict[str, object], settings: cfg.Settings) -> str | None:
+    """One MLflow run for the shipped model, with its test metrics and its gate verdict."""
+    try:
+        import mlflow
+    except ImportError:  # pragma: no cover - mlflow is an optional dev-time dependency
+        LOGGER.warning("mlflow not installed; the final evaluation was not tracked")
+        return None
+
+    from leadscore import evaluate as ev
+
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    mlflow.set_experiment("p1-lead-scoring")
+    gate: ev.GateResult = outcome["gate"]  # type: ignore[assignment]
+    calibration: ev.CalibrationChoice = outcome["calibration"]  # type: ignore[assignment]
+    cutoffs: ev.GradeCutoffs = outcome["cutoffs"]  # type: ignore[assignment]
+
+    with mlflow.start_run(run_name=f"final-{outcome['version']}"):
+        mlflow.log_params(
+            {
+                "model_version": outcome["version"],
+                "calibration": calibration.method,
+                "grade_a_from": cutoffs.a_from,
+                "grade_b_from": cutoffs.b_from,
+                "gate_passed": gate.passed,
+            }
+        )
+        for metrics in outcome["metrics"]:  # type: ignore[union-attr]
+            prefix = metrics.name
+            mlflow.log_metrics(
+                {
+                    f"test_{prefix}_roc_auc": metrics.roc_auc,
+                    f"test_{prefix}_pr_auc": metrics.pr_auc,
+                    f"test_{prefix}_brier": metrics.brier,
+                    f"test_{prefix}_capture_at_20": metrics.capture_at_20,
+                }
+            )
+        if outcome["card_path"]:
+            mlflow.log_artifact(str(outcome["card_path"]))
+    return settings.mlflow_tracking_uri
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="  %(message)s")
     os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
     settings = cfg.Settings()
 
-    results, split = run_selection(settings)
+    from leadscore import schema as sch
+
+    frame = sch.load_and_validate(settings.data_raw, settings)
+    results, split = run_selection(settings, frame=frame)
     results.sort(key=lambda r: r.mean_auc, reverse=True)
     winner = results[0]
 
-    tracking = log_to_mlflow(results, split, settings)
-    report = write_report(results, split, settings)
+    selection_tracking = log_to_mlflow(results, split, settings)
+    selection_report = write_report(results, split, settings)
 
     print()
-    print("  Cross-validated ROC-AUC on the training split (the test set was not opened)")
-    print("  " + "-" * 56)
+    print("  Phase 3 - cross-validated ROC-AUC on the training split (test set still closed)")
+    print("  " + "-" * 72)
     for result in results:
         marker = "  <- winner" if result is winner else ""
         print(f"  {result}{marker}")
     print()
-    print(f"  train rows {split.sizes['train']:,} · test rows held back {split.sizes['test']:,}")
-    if tracking:
-        print(f"  tracked in MLflow at {tracking}")
-    print(f"  report {report}")
+    print(f"  train rows {split.sizes['train']:,} - test rows held back {split.sizes['test']:,}")
+    print(f"  report {selection_report}")
+
+    outcome = ship(frame, split, winner, settings)
+    final_tracking = log_final_to_mlflow(outcome, settings)
+
+    gate = outcome["gate"]
     print()
-    print("  Next: Phase 4 calibrates the winner and opens the test set once (T-401 to T-403).")
+    print("  Phase 4 - the held-out rows, read once")
+    print("  " + "-" * 72)
+    for metrics in outcome["metrics"]:  # type: ignore[union-attr]
+        print(f"  {metrics}")
+    print()
+    print(f"  calibration      {outcome['calibration'].method}")
+    print(f"  grade cut-offs   A from {outcome['cutoffs'].a_from}, B from {outcome['cutoffs'].b_from}")
+    print(f"  quality gate     {'PASSED' if gate.passed else 'FAILED'}")
+    for check in gate.failures:
+        print(f"    FAIL {check.name}: {check.value} against {check.threshold}")
+    print(f"  model version    {outcome['version']}")
+    print(f"  model card       {outcome['card_path']}")
+    print(f"  report           {outcome['report_path']}")
+    if outcome["model_path"]:
+        print(f"  model            {outcome['model_path']}")
+    else:
+        print("  model            NOT WRITTEN - the gate failed")
+    if final_tracking or selection_tracking:
+        print(f"  tracked in MLflow at {final_tracking or selection_tracking}")
+    print()
+
+    if not gate.passed:
+        print("  The gate exists to stop this. Fix the model, never the threshold.")
+        return 1
+    print("  Next: Phase 5 serves this model behind FastAPI (T-501 to T-507).")
     return 0
 
 

@@ -65,6 +65,8 @@ Three, all logged and published:
 
 LightGBM, tuned with Optuna for 30–50 trials on cross-validated ROC-AUC. Wrapped in `CalibratedClassifierCV` if the reliability curve or Brier score shows mis-confidence.
 
+**Measured 2026-11-18:** the reliability curve sits on the diagonal and no calibrator improved out-of-fold Brier (raw 0.13119, sigmoid 0.13145, isotonic 0.13195), so **nothing was wrapped around the model**. The comparison stays in the pipeline and will apply a calibrator the moment one earns its place - see docs/14, D-020.
+
 ### FR-6 Score, grade and reasons **[C]**
 
 - `score = round(100 × calibrated_probability)`.

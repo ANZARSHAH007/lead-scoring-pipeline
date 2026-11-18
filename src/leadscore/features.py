@@ -20,6 +20,7 @@ a lambda cannot be pickled.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -99,3 +100,43 @@ def split_columns(name: cfg.FeatureSet = "shipping") -> tuple[list[str], list[st
     numeric = [c for c in columns if c in cfg.NUMERIC_FEATURES]
     categorical = [c for c in columns if c not in cfg.NUMERIC_FEATURES]
     return numeric, categorical
+
+
+#: Every column name the config knows, longest first. One-hot feature names are built as
+#: ``<column>_<category>``, and both parts can contain underscores and spaces — "What
+#: matters most to you in choosing a course_Better Career Prospects" is one real example —
+#: so a transformed name is matched by longest prefix rather than split on a separator.
+_ALL_SOURCE_COLUMNS: tuple[str, ...] = tuple(
+    sorted(set(cfg.shipping_features()) | set(cfg.excluded_columns()), key=len, reverse=True)
+)
+
+
+def source_column(name: str) -> str:
+    """The raw column a transformed feature name came from.
+
+    SHAP attributions arrive per transformed column — one per one-hot level — and both the
+    reasons in the API and the gate's leakage check need them grouped back by the column a
+    human would recognise. Returns the name unchanged when nothing matches, so an
+    unexpected name shows up in output rather than being silently reassigned.
+    """
+    if name in _ALL_SOURCE_COLUMNS:
+        return name
+    for column in _ALL_SOURCE_COLUMNS:  # longest first, so the match is unambiguous
+        if name.startswith(f"{column}_"):
+            return column
+    return name
+
+
+def group_by_source(names: list[str], values: np.ndarray) -> dict[str, float]:
+    """Sum per-feature values back onto their source columns, keeping the sign.
+
+    Signed, not absolute: a one-hot level that pushes the score down and another that pushes
+    it up are different facts about the same column, and summing them is what "this column
+    moved the score by X" means.
+    """
+    if len(names) != len(values):
+        raise ValueError(f"{len(names)} names against {len(values)} values")
+    grouped: dict[str, float] = {}
+    for name, value in zip(names, values, strict=True):
+        grouped[source_column(name)] = grouped.get(source_column(name), 0.0) + float(value)
+    return grouped

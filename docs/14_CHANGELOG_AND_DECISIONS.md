@@ -300,6 +300,88 @@ more than it saves.
 set behind a line in a config file. Pinning states the same fact where a reader installing the
 project will see it.
 
+### D-020 - No calibrator is applied, because none of them helped
+
+**Date** 2026-11-18 - **Status** accepted
+
+The plan assumed the gradient booster would be over-confident and would need wrapping in
+`CalibratedClassifierCV`; the README's table even had a row reading "LightGBM (calibrated)"
+written in advance. Measured on out-of-fold predictions from the training split:
+
+| Method | Out-of-fold Brier |
+| --- | ---: |
+| none | **0.13119** |
+| sigmoid | 0.13145 |
+| isotonic | 0.13195 |
+
+The differences are in the fourth decimal place - noise. The tuned model runs 500 trees at a
+learning rate of 0.0107, which is slow enough that it never reaches the over-confidence that
+makes calibration necessary, and the reliability curve in report 04 sits on the diagonal
+without help.
+
+So nothing is wrapped around the model, and the published row says "**LightGBM (tuned, no
+calibrator needed)**". `evaluate.shipping_label()` derives that string from the chosen
+method, so the table cannot claim a calibrator that was not applied. The comparison stays in
+the pipeline: if a future retrain does need one, it will be chosen the same way and the label
+will change by itself.
+
+**Rejected:** applying isotonic anyway "because it is good practice". It would have cost
+0.0008 of Brier and made the table's claim true by changing the model to fit the label.
+
+### D-021 - Explanations come from an uncalibrated twin of the shipped model
+
+**Date** 2026-11-18 - **Status** accepted
+
+SHAP's `TreeExplainer` needs a tree model. A `CalibratedClassifierCV` is not one, so a
+calibrated model cannot be explained directly. Rather than switch to a slower model-agnostic
+explainer, the bundle in `models/model.joblib` carries two objects: the model that scores,
+and an uncalibrated LightGBM twin fitted on the same rows that explains.
+
+This is sound because calibration is monotone: it can change what a score *means* but not
+the order of the leads or the sign of a feature's contribution. The card states it in
+`selection.explanations_from` rather than leaving it to be discovered.
+
+On this run the point is moot - no calibrator was applied (D-020), so the twin is the model.
+It stays in the design because the next retrain may well need one.
+
+### D-022 - The held-out rows have a ledger and a fingerprint
+
+**Date** 2026-11-18 - **Status** accepted
+
+"The test set is evaluated exactly once" was a promise in three documents and nothing in the
+code could tell whether it had been kept. Now:
+
+* every read goes through `evaluate.record_opening()`, and the count is published in the card
+  as `data.test_set_openings`. A reader can see that it says 1;
+* `evaluate.fingerprint()` hashes the held-out row identifiers into the card, so two runs can
+  be compared - same hash, same rows, comparable numbers;
+* `evaluate_on_test` refuses to score two models on different held-out rows, which is how the
+  leakage row and the shipping row are kept honest against each other;
+* a second read in one process logs a warning naming both readers.
+
+None of this prevents misuse. It makes misuse visible, which is the most a tool can do about
+a discipline problem.
+
+### D-023 - A test wrote over the real model card, and the guard is now generated
+
+**Date** 2026-11-18 - **Status** accepted
+
+The Phase 4 smoke test pointed `reports_dir` and `model_path` at a temporary directory and
+left `model_card_path` at its default. Because a relative default resolves against the
+project root (T-112), the fixture run wrote synthetic numbers and a stubbed quality gate over
+the real `models/model_card.json`. It was caught by reading the card and noticing that the
+gate check said "stubbed for this test".
+
+This is the same bug as the hardcoded reports path from 2026-11-17, and it survived because
+the guard test listed the paths it checked by hand. The guard now enumerates every `Path`
+field on `Settings` through `model_fields` and asserts each one resolves inside the temporary
+directory, so a path field added later is covered the day it is added. Verified by hashing
+the real card before and after a full test run: unchanged.
+
+**The lesson recorded rather than absorbed:** a guard written as a list of things to check is
+only as good as the author's memory. A guard that enumerates its subject is as good as the
+code.
+
 ---
 
 ## Changelog
@@ -501,6 +583,86 @@ warning is now resolved); the real training run reproduces 0.8825 ± 0.0045 with
 report paths changed.
 
 Nothing about the model changed. No new dependency was added.
+
+### 2026-11-18 — Phase 4: the held-out rows, opened once
+
+The test set was opened for the first and only time. Every number below comes from that one
+read of 1,848 leads (fingerprint in the model card), and nothing in Phase 3 chose a model
+using any of them.
+
+| Model | ROC-AUC | PR-AUC | Brier | Capture@20% |
+| --- | ---: | ---: | ---: | ---: |
+| Random baseline | 0.500 | 0.385 | 0.250 | 20.2% |
+| One-rule (time on site) | 0.646 | 0.569 | 0.241 | 35.3% |
+| Logistic regression | 0.850 | 0.777 | 0.152 | 42.6% |
+| **LightGBM (tuned, no calibrator needed)** | **0.865** | **0.805** | **0.142** | **44.1%** |
+| LightGBM + sales columns *(leakage, not shippable)* | 0.984 | 0.977 | 0.043 | 51.5% |
+
+**The headline: calling the top 20% of scored leads reaches 44.1% of all conversions.** A
+flawless ranking would reach 52.0% at that depth, so the model closes 75% of
+the distance between guessing and omniscience. The spreadsheet sort a sales manager already
+does reaches 35.3%, which makes the honest size of the win **8.8 percentage points of
+captured conversions**, not the 24 points the comparison against random would suggest.
+
+**Four things this phase found that planning had assumed otherwise.**
+
+1. **No calibrator helped** (D-020). The plan, and the README's pre-written table, said
+   "LightGBM (calibrated)". Out-of-fold Brier: raw 0.13119, sigmoid 0.13145, isotonic
+   0.13195 — differences in the fourth decimal. 500 trees at a learning rate of 0.0107 never
+   becomes over-confident enough to need fixing. Nothing was wrapped around the model, and
+   the published label now says so.
+2. **The one-rule baseline is much weaker on the test set than cross-validation suggested** —
+   0.646 ROC-AUC here against 0.6517 in CV, and its capture of 35.3% comes almost entirely
+   from the fact that leads with high time-on-site really do convert. Report 01's U-shape
+   finding holds: sorting by one column is a real baseline, not a strawman, and beating it by
+   8.8 points is the actual claim.
+3. **Cross-validation was optimistic by 0.018 ROC-AUC** — 0.8825 in CV, 0.8645 on the
+   held-out rows. That gap is the price of tuning 40 Optuna trials against CV, and it is
+   exactly why the test set is kept closed until the end. Reporting the CV number as the
+   result would have overstated the model.
+4. **The leakage gap is enormous and now measured on the same rows** — 0.865 to 0.984
+   ROC-AUC, 44.1% to 51.5% capture, from six columns sales fills in after speaking to the
+   lead. That row exists in the table to be refused.
+
+**Error analysis (T-406).** Both groups come out of the same single read.
+
+- **Confident and wrong** — 20 leads scored 85–97 that never converted. 13 of 20 arrived
+  through `Lead Add Form`, 11 of 20 from `Reference`, and 10 of 20 spent **no time on the
+  website at all**. The referral channel converts so well on average that the model scores a
+  referred lead in the 90s on channel alone. That is defensible behaviour and a real
+  weakness: the model cannot tell an enthusiastic referral from a courtesy one.
+- **Missed opportunities** — 20 leads scored 3–7 that converted anyway. 13 of 20 arrived
+  through `API`, 9 of 20 came from Olark Chat, and **18 of 20 did not say what they do for a
+  living**. These are invisible to the admissible columns: whatever made
+  them convert happened in a conversation the model is not allowed to see.
+
+**Grades.** A from score 76, B from 26, C below — cut-offs placed at the configured
+percentiles of the out-of-fold validation distribution, stored in the card, and read from
+there by the API and dashboard later rather than hardcoded.
+
+**Quality gate: passed, 5 of 5.** Beats the linear baseline (0.865 > 0.850), clears the
+ROC-AUC floor (0.80), stays under the Brier ceiling (0.142 ≤ 0.18), beats both the random and
+one-rule capture floors, and exposes exactly the 13 admissible source columns with no banned
+column among them. A label-shuffled model is rejected by the same function in
+`test_model_quality.py`, which is the only way to know the gate works.
+
+**A bug worth recording: a test wrote over the real model card** (D-023). The Phase 4 smoke
+test redirected `reports_dir` and `model_path` to a temporary directory but left
+`model_card_path` at its default, so a fixture run published synthetic numbers and a stubbed
+gate into `models/model_card.json`. Caught by reading the card and seeing a gate check named
+"stubbed for this test". The guard test now enumerates every `Path` field on `Settings`
+rather than listing them by hand, and the real card's hash is unchanged across a full test
+run. Same bug as the hardcoded reports path from the day before, and it survived because the
+guard was a hand-written list.
+
+**The README is generated now** (T-407). `scripts/publish_results.py` writes the headline and
+the results table from `models/model_card.json`, and `--check` reports drift without editing,
+which is what CI will run. The release checklist line "README results table matches the card"
+is no longer something a human has to verify by eye.
+
+**Verified:** `ruff check src tests scripts` clean; **192 tests pass**; `scripts/doctor.py`
+exits 0; the pipeline run writes `models/model.joblib`, `models/model_card.json`,
+`reports/04_evaluation.md` and three figures, and reports `test_set_openings: 1`.
 
 ### Next entry
 

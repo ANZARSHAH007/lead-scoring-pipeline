@@ -79,6 +79,7 @@ lead-scoring-pipeline/
 ├── scripts/
 │   ├── check_data.py            stdlib-only dataset verifier          [Phase 1]
 │   ├── doctor.py                environment preflight, ~2 seconds     [Phase 1]
+│   ├── publish_results.py       README numbers from the model card     [Phase 4]
 │   ├── eda.py                   report 01                             [Phase 2]
 │   └── leakage_audit.py         report 02                             [Phase 2]
 ├── requirements.lock            the pinned resolution that works
@@ -105,6 +106,9 @@ lead-scoring-pipeline/
 │   ├── test_fixtures.py         the fixture still matches the contract [Phase 3]
 │   ├── test_plotting.py         the honest-axis rule                   [Phase 3]
 │   ├── test_smoke.py            the whole chain, synthetic data        [Phase 3]
+│   ├── test_evaluate.py         metric math, grades, the gate         [Phase 4]
+│   ├── test_explain.py          three reasons, phrase coverage        [Phase 4]
+│   ├── test_model_quality.py    the gate against fitted models        [Phase 4]
 │   ├── test_api.py                                                    [Phase 5]
 │   └── test_model_quality.py                                          [Phase 4]
 ├── docs/                        01–14, this documentation set
