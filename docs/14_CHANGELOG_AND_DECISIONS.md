@@ -471,6 +471,44 @@ README's *What is not here* section says so plainly rather than implying a verif
 happened yet. The workflow has never executed; the first push is what makes it real.
 
 ### Next decision
+### D-029 - The demo goes to Cloud Run, because Hugging Face started charging for Docker
+
+**Date** 2026-11-19 - **Status** accepted, replacing the host half of D-0xx planning in docs/12
+
+Phase 6 was written against Hugging Face Spaces with the Docker SDK, free. On the day of the
+deploy the create-Space screen showed **Docker: Paid**, and Hugging Face's docs confirm that
+since July 2026 creating a Gradio or Docker Space requires a PRO subscription ($9/month).
+Only Static Spaces remain free, and a static page cannot run a FastAPI service.
+
+The owner's call was to keep Docker and go to a production-shaped host rather than take the
+cheapest route: **Google Cloud Run**, in `asia-south1`. The reasoning was explicitly about
+learning the industrial pattern - image to registry, immutable revision, traffic routing,
+scale to zero - on a project already understood end to end, because that knowledge carries
+into P5 and P7 where there is real infrastructure.
+
+**What made it a safe choice rather than a hopeful one:** the memory was measured first. The
+API holds **259 MB** with the model and SHAP loaded; the dashboard holds **137 MB**; about
+400 MB together. That rules out any 256 MB free tier, makes a 512 MB tier (Render, Koyeb)
+tight but viable, and makes Cloud Run at 1 GiB comfortable while still inside the free
+allowance of 360,000 GiB-seconds a month.
+
+**The cost of the choice, stated plainly:** Cloud Run needs a billing account with a card on
+file, even though the demo should owe nothing. Render remains the no-card fallback and takes
+the same image with no code change - which is the dividend of having built a portable
+container rather than a host-specific app.
+
+**A trap found while writing the guide:** `gcloud builds submit` falls back to `.gitignore`
+when there is no `.gcloudignore`. `models/` is git-ignored on purpose, so the build would
+have succeeded and the container would have died at startup with `no model at
+/app/models/model.joblib` - the same failure the Spaces guide warned about at step 4, in a
+different disguise. `.gcloudignore` now inverts the rule deliberately and says why in a
+comment.
+
+**What this episode is really evidence for:** docs/12 was written in Phase 0 with the line
+"limits change, so they are checked at deploy time rather than trusted from memory". That
+sentence looked like boilerplate. It was the most valuable line in the document.
+
+### Next decision
 ---
 
 ## Changelog

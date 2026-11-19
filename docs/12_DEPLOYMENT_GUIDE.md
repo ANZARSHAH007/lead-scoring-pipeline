@@ -8,7 +8,7 @@ Written in advance of Phase 6, and revised on 2026-11-19 once the files existed.
 | --- | --- | --- | --- | --- |
 | Local dev | the laptop | build and train | real `Leads.csv` in `data/raw/` | trained locally by `make train` |
 | CI | GitHub Actions runner | lint, test, build, gate | 200-row fixture; the real CSV only on `main` | fixture model; a real one on `main` |
-| Demo (production) | Hugging Face Spaces (Docker) · alt. Render | the public demo URL | none — the image carries no dataset | the CI-built artifact, baked into the image |
+| Demo (production) | **Google Cloud Run** (Mumbai, `asia-south1`) · alt. Render | the public demo URL | none — the image carries no dataset | baked into the image at build time |
 
 There is no staging environment, and that is deliberate: the deployable is a stateless container with an immutable model, so "staging" would differ from production only by URL. The capstone, which writes to real systems, gets one.
 
@@ -78,7 +78,13 @@ Deployment stays **manual** in P1. A push that passes CI does not ship a model; 
 
 ## Deploying the demo
 
-**[planned]** Hugging Face Spaces, Docker SDK (OQ-8 answered 2026-11-19). Full step-by-step in `deploy/huggingface/DEPLOY.md`, including the one thing that is easy to get wrong: **the Space repo carries `models/model.joblib`, which the GitHub repo deliberately does not**, so the model is copied in by hand at step 4. Outline:
+**[planned]** **Google Cloud Run**, built by Cloud Build so no local Docker is needed. Full step-by-step in `deploy/cloudrun/DEPLOY.md`. Hugging Face Spaces was the plan until 2026-11-19, when its Docker SDK turned out to need a PRO subscription (D-029); that guide is kept and marked superseded.
+
+The shape of it: `gcloud builds submit` uploads the source and builds the image on Google's machines → the image lands in Artifact Registry → `gcloud run deploy` creates an **immutable revision** → traffic moves to it. A rollback is `update-traffic` back to the previous revision, and because the model is inside the image, rolling back the revision rolls back the model.
+
+**One trap, closed in the repo:** without a `.gcloudignore`, gcloud falls back to `.gitignore` — which excludes `models/` on purpose. The build would succeed and the container would die at startup. `.gcloudignore` uploads `models/` while still excluding the dataset, the prediction log, `.venv` and every secret.
+
+Outline of the old Spaces path, kept for reference:
 
 1. verify the free tier's current CPU, RAM and sleep policy — limits change, so they are checked at deploy time rather than trusted from memory
 2. create a Space, SDK = Docker

@@ -46,9 +46,13 @@ The last row is deliberate: it shows how much accuracy comes from columns that o
 
 <!-- demo:start -->
 **Not deployed yet.** The image, the compose file and the deploy steps are written
-([deploy/huggingface/DEPLOY.md](deploy/huggingface/DEPLOY.md)); the Space itself needs an
+([deploy/cloudrun/DEPLOY.md](deploy/cloudrun/DEPLOY.md)); the service needs a Google Cloud
 account, so the URL appears here once it exists. Until then the quickstart below runs the
 whole thing locally in two commands.
+
+The original target was Hugging Face Spaces, which made its Docker SDK PRO-only in July 2026
+([docs/14](docs/14_CHANGELOG_AND_DECISIONS.md), D-029). The image did not change — that is
+the dividend of building a portable container rather than a host-specific app.
 <!-- demo:end -->
 
 ## How it fits together

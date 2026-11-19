@@ -79,8 +79,14 @@ How long do prediction rows live, and does the demo's log persist across restart
 **Options:** (a) ephemeral in the demo, keep everything locally — simplest, nothing to manage; (b) a persistent volume with a 90-day window — needed only if live accuracy from demo traffic is ever published.
 **Recommendation:** (a) for P1. Becomes mandatory to revisit if real inquiry data ever flows through (A-9).
 
-### OQ-8 — ~~Host: Hugging Face Spaces or Render?~~ **RESOLVED 2026-11-19: Spaces**
-**Answer (owner, 2026-11-19):** Hugging Face Spaces, Docker SDK. Steps are written in `deploy/huggingface/DEPLOY.md`, including the one awkward part: the Space repo carries `models/model.joblib`, which the GitHub repo deliberately does not. Render stays the fallback and needs no code change, because the image is portable on purpose. Free-tier limits are still checked at deploy time rather than trusted from memory.
+### OQ-8 — ~~Host: Hugging Face Spaces or Render?~~ **REOPENED and RE-RESOLVED 2026-11-19: Google Cloud Run**
+**First answer (owner, 2026-11-19, 14:30):** Hugging Face Spaces, Docker SDK. **Withdrawn the same afternoon**: the create-Space screen labels Docker and Gradio **Paid**, and Hugging Face confirmed in July 2026 that creating a Docker Space needs a PRO subscription ($9/month). Only Static Spaces stay free, and a static page cannot run this API.
+
+**Second answer (owner, 2026-11-19, 15:10): Google Cloud Run**, chosen for the production-shaped workflow rather than the cheapest click-through — image to registry, immutable revision, traffic routing, scale to zero. Free allowance (180,000 vCPU-seconds, 360,000 GiB-seconds, 2M requests a month) covers this demo many times over; it needs a billing account with a card, at $0 owed. Steps in `deploy/cloudrun/DEPLOY.md`. **Render stays the no-card fallback** and takes the same image with no code change.
+
+**The measurement that made the choice safe:** the API holds 259 MB with the model and SHAP loaded, the dashboard 137 MB, so ~400 MB together. That rules out any 256 MB tier, makes a 512 MB tier tight, and makes Cloud Run at 1 GiB comfortable.
+
+**Superseded detail (kept for the record):** Steps are written in `deploy/huggingface/DEPLOY.md`, including the one awkward part: the Space repo carries `models/model.joblib`, which the GitHub repo deliberately does not. Render stays the fallback and needs no code change, because the image is portable on purpose. Free-tier limits are still checked at deploy time rather than trusted from memory.
 
 ### OQ-9 — Does the public demo need the API key enabled?
 A public `/score/batch` accepting 1,000 leads is cheap to abuse.

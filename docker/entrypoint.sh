@@ -10,7 +10,10 @@
 # also why the dashboard's default API URL is a loopback address in the image.
 set -eu
 
-MODE="${1:-api}"
+# The env var wins over the CMD argument on purpose: Hugging Face runs the image as-is and
+# can only set variables, so `LEADSCORE_MODE=both` in the Space settings is enough and no
+# edited copy of the Dockerfile has to be kept in sync.
+MODE="${LEADSCORE_MODE:-${1:-api}}"
 API_PORT="${LEADSCORE_API_PORT:-8000}"
 DASHBOARD_PORT="${PORT:-${LEADSCORE_DASHBOARD_PORT:-8501}}"
 

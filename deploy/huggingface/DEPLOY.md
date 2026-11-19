@@ -1,4 +1,16 @@
-# Deploying the demo to Hugging Face Spaces (task T-604)
+# Deploying the demo to Hugging Face Spaces (task T-604) - SUPERSEDED
+
+> **Hugging Face made Docker Spaces a paid feature in July 2026.** Creating one now requires
+> a PRO subscription ($9/month); only Static Spaces remain free, and a static page cannot run
+> this API. Verified on the owner's account on 2026-11-19: the create-Space screen labels both
+> Docker and Gradio **Paid**.
+>
+> **The live target is Google Cloud Run instead - see [../cloudrun/DEPLOY.md](../cloudrun/DEPLOY.md).**
+>
+> This file is kept, not deleted, for two reasons: the steps still work if the owner ever
+> takes a PRO subscription, and the episode is the clearest example in this project of why
+> docs/12 says to verify a host's limits at deploy time rather than trust them from memory.
+> That instruction was written in Phase 0 and paid for itself here.
 
 Written to be followed by the repo owner, because every step needs an account this project
 does not have. Nothing here has been executed yet — the Space does not exist until you create
@@ -70,21 +82,17 @@ Face will ask you to use Git LFS and tell you the command.
 **5. Tell the container to run both services.**
 
 The Space runs **one** container, so the dashboard is the public surface and the API stays
-internal on loopback. Create `Dockerfile`'s last line override by adding this file:
+internal on loopback. No file to edit: in the Space, go to **Settings -> Variables and
+secrets -> New variable** and add
 
-```bash
-printf 'both\n' > .space-mode   # documentation only, not read by anything
-```
+| Name | Value |
+| --- | --- |
+| `LEADSCORE_MODE` | `both` |
 
-and change the `CMD` in the copied `Dockerfile` from `["api"]` to `["both"]`:
-
-```dockerfile
-CMD ["both"]
-```
-
-The `both` mode in `docker/entrypoint.sh` starts Uvicorn on 127.0.0.1:8000, waits for
-`/health` to answer, then starts Streamlit on 8501 — which is the port `app_port: 8501` in the
-README front matter tells Hugging Face to route.
+`docker/entrypoint.sh` reads that variable ahead of the Dockerfile's `CMD`, starts Uvicorn on
+127.0.0.1:8000, waits for `/health` to answer, then starts Streamlit on 8501 - which is the
+port `app_port: 8501` in the README front matter tells Hugging Face to route. It is a
+variable, not a secret: nothing about it is sensitive.
 
 **6. Push.**
 

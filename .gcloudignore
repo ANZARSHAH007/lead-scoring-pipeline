@@ -1,0 +1,48 @@
+# What NOT to upload when `gcloud builds submit` sends this directory to Cloud Build.
+#
+# This file exists because of a trap: when there is no `.gcloudignore`, gcloud falls back to
+# `.gitignore`. That would be exactly wrong here, because `models/` is git-ignored on purpose
+# and the image must contain the model. The build would succeed and the container would die
+# at startup with "no model at /app/models/model.joblib".
+#
+# So the rule is inverted from git's: upload what the image needs, exclude what it does not.
+
+# --- never upload: third-party data, local state, caches -------------------------------
+data/raw/*
+!data/raw/README.md
+data/*.db
+*.db
+mlruns/
+mlartifacts/
+mlflow.db
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- never upload: secrets -------------------------------------------------------------
+.env
+.env.local
+kaggle.json
+*.pem
+*.key
+
+# --- not needed in the build context ---------------------------------------------------
+.git/
+.github/
+docs/
+notebooks/
+design-system/
+deploy/
+tests/
+reports/*.md
+*.md
+!README.md
+
+# `models/` is deliberately NOT ignored here. The image copies the model in, and the
+# container refuses to start without it.
