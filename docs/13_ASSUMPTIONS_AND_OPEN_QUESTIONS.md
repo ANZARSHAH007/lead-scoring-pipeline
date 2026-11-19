@@ -54,20 +54,20 @@ Does P1 stay on the X Education dataset, or re-theme to property inquiries?
 **Options:** (a) approve `uv` — fast, lockfile, matches the design doc, one global install; (b) `pip` + `venv` + `requirements.txt` — nothing to install, slower, weaker lockfile; (c) `uv` in CI only, `pip` locally — divergence between CI and laptop, which is the thing a lockfile exists to prevent.
 **Resolved:** (b), `pip` + `venv`. The owner said to start Phase 1 without answering this explicitly, and installing `uv` is a machine-wide change that needs a clear yes, so the path that needs no install was taken. `pyproject.toml` is uv-compatible, so `uv sync` works later with no repo change. Revisit if install speed becomes a real cost.
 
-### OQ-3 — Docker: ~~install now~~ **DEFERRED to Phase 6 (2026-11-27)** — still open then
+### OQ-3 — ~~Docker: install now?~~ **RESOLVED 2026-11-19: option (c), with CI as the proof**
 Docker is **not installed** (`docker: command not found`, no Docker Desktop directory). Phases 1–5 do not need it; Phase 6's `docker compose up` and the CI image build do, and it is an acceptance criterion (FR-11).
 **Options:** (a) install Docker Desktop now; (b) install it at Phase 6; (c) skip local Docker and let CI build the image — the image then ships untested locally, which contradicts "a stranger can run it".
-**Recommendation:** (b) — it is not needed until 2026-11-27, so it should not block Session 1. **Owner decision needed by Phase 6.**
+**Answer (owner, 2026-11-19):** do not install it; write the Dockerfile and compose file to spec and let CI prove them. CI now builds the image, starts the container, polls `/health` and scores a lead through it on every push, which is a stronger check than a local `docker build` that only the author ever runs. The cost is honest and recorded: T-602 is marked **Done (untested locally)** until the owner runs it by hand, and the README's *What is not here* section says so.
 
 ### OQ-4 — ~~Python 3.11 or 3.12?~~ **RESOLVED 2026-11-13: 3.11.9**
 Installed: **3.11.9** (Microsoft Store build). The design doc assumed 3.12.
 **Options:** (a) target 3.11 — nothing to install, all dependencies support it; (b) install 3.12 — matches the doc, another machine-wide change for no functional gain.
 **Resolved:** (a). The Store build's virtualenv quirk did **not** materialise — `.venv` was created and the suite runs from it. `requires-python = ">=3.11"`, and CI pins 3.11.
 
-### OQ-5 — Does the demo surface stay Streamlit?
+### OQ-5 — ~~Does the demo surface stay Streamlit?~~ **RESOLVED 2026-11-19: yes, option (a)**
 Streamlit gives a three-page UI in one file but cannot carry the generated design system beyond theme tokens (doc 08).
 **Options:** (a) keep Streamlit, apply tokens via `.streamlit/config.toml`, accept its look — cheapest, and P1 is a pipeline; (b) a small static HTML + Tailwind page against the API — full design control, roughly one extra session; (c) defer the polished UI to P3, where React is on the roadmap anyway.
-**Recommendation:** (a) now, (c) later. **Owner decision needed by Phase 6.**
+**Answer 2026-11-19:** Streamlit, with the design-system tokens applied as CSS in `dashboard/app.py` rather than fought over. The deliberate consequence is that the demo looks like Streamlit; P1 is a pipeline and the dashboard exists to demonstrate it. The logic that could be wrong lives in `dashboard/client.py` with 37 tests, so choosing a cheaper surface cost nothing in correctness.
 
 ### OQ-6 — Timezone for displayed timestamps?
 Storage is UTC, settled. Display is not: the owner is in **UTC+5**.
@@ -79,17 +79,17 @@ How long do prediction rows live, and does the demo's log persist across restart
 **Options:** (a) ephemeral in the demo, keep everything locally — simplest, nothing to manage; (b) a persistent volume with a 90-day window — needed only if live accuracy from demo traffic is ever published.
 **Recommendation:** (a) for P1. Becomes mandatory to revisit if real inquiry data ever flows through (A-9).
 
-### OQ-8 — Host: Hugging Face Spaces or Render?
-**Recommendation:** Spaces (Docker SDK, free, no card), Render as the fallback. Either way the current free-tier limits are verified at deploy time, not assumed. **Decide at Phase 6.**
+### OQ-8 — ~~Host: Hugging Face Spaces or Render?~~ **RESOLVED 2026-11-19: Spaces**
+**Answer (owner, 2026-11-19):** Hugging Face Spaces, Docker SDK. Steps are written in `deploy/huggingface/DEPLOY.md`, including the one awkward part: the Space repo carries `models/model.joblib`, which the GitHub repo deliberately does not. Render stays the fallback and needs no code change, because the image is portable on purpose. Free-tier limits are still checked at deploy time rather than trusted from memory.
 
 ### OQ-9 — Does the public demo need the API key enabled?
 A public `/score/batch` accepting 1,000 leads is cheap to abuse.
 **Recommendation:** ship open, watch it, set `LEADSCORE_API_KEY` and add per-IP rate limiting only if abused. **No action now.**
 
-### OQ-10 — Should CI download the dataset on `main`?
+### OQ-10 — ~~Should CI download the dataset on `main`?~~ **RESOLVED 2026-11-19: yes, option (a)**
 It needs the Kaggle token as a repo secret (A-11), in a **public** repo. GitHub secrets are not exposed to forked-PR builds, so this is safe, but it is worth a conscious yes.
 **Options:** (a) yes — CI retrains and runs the real gate; (b) no — CI gates on the fixture only, the real gate runs locally and its numbers are pasted into the PR.
-**Recommendation:** (a). **Owner decision needed by Phase 6.**
+**Answer (owner, 2026-11-19):** yes. The `model` job in `.github/workflows/ci.yml` runs on pushes to `main` only, downloads the dataset with `KAGGLE_USERNAME` / `KAGGLE_KEY` from repository secrets, retrains, and fails the build if the quality gate refuses the model. **The owner must add those two secrets** under Settings → Secrets and variables → Actions; until then that job fails with a message saying exactly that, which is better than skipping silently. Forked-PR builds never receive the secrets, so the public repo stays safe.
 
 ### OQ-11 — How is the GitHub repo created? `gh` is not installed.
 **Options:** (a) create it in the browser, then `git remote add` — no install; (b) install the GitHub CLI.

@@ -42,6 +42,62 @@ Generated from the model card. Every row is one pass over the same 1,848 held-ou
 
 The last row is deliberate: it shows how much accuracy comes from columns that only exist *after* sales has already called the lead. See [docs/02_PRODUCT_REQUIREMENTS.md](docs/02_PRODUCT_REQUIREMENTS.md).
 
+## Live demo
+
+<!-- demo:start -->
+**Not deployed yet.** The image, the compose file and the deploy steps are written
+([deploy/huggingface/DEPLOY.md](deploy/huggingface/DEPLOY.md)); the Space itself needs an
+account, so the URL appears here once it exists. Until then the quickstart below runs the
+whole thing locally in two commands.
+<!-- demo:end -->
+
+## How it fits together
+
+Two lanes, separated by a file. Training writes `model.joblib` and `model_card.json`; serving
+reads them and never fits anything. That separation is why a retrain cannot break the API at
+runtime, and why the API's grade cut-offs change when the model changes rather than when
+somebody edits serving code.
+
+```mermaid
+flowchart LR
+    subgraph T["Training lane — offline, one command"]
+        direction TB
+        T1[("data/raw/Leads.csv<br/>git-ignored")] --> T2["schema.py<br/>pandera contract"]
+        T2 --> T3["features.py<br/>ColumnTransformer"]
+        T3 --> T4["train.py<br/>split · CV · Optuna"]
+        T4 --> T5["evaluate.py<br/>calibration · grades<br/>test set opened ONCE"]
+        T5 -->|"gate passes"| T6[("models/<br/>model.joblib<br/>model_card.json")]
+        T5 -->|"gate fails"| T7["nothing is written<br/>exit 1"]
+        T4 -.->|"params, metrics"| T8[("MLflow<br/>sqlite")]
+    end
+
+    subgraph S["Serving lane — online, loads once"]
+        direction TB
+        T6 --> S1["api/main.py<br/>FastAPI"]
+        S1 --> S2["explain.py<br/>SHAP → 3 reasons"]
+        S1 --> S3[("api/store.py<br/>prediction log")]
+        S4["dashboard/app.py<br/>Streamlit, 3 pages"] -->|"HTTP"| S1
+        S5["any client"] -->|"HTTP"| S1
+    end
+
+    S3 -.->|"/feedback outcomes<br/>become training rows"| T1
+```
+
+Full module map in [docs/05_TECHNICAL_ARCHITECTURE.md](docs/05_TECHNICAL_ARCHITECTURE.md).
+
+## What is not here
+
+Stated plainly, because a reviewer will look for these:
+
+- **No demo URL yet** — the deploy is written but not run (T-604).
+- **No demo GIF** — it records the deployed demo, so it waits on the URL (T-605).
+- **The Docker build is unverified locally.** Docker is not installed on the author's
+  machine, so the image is proved by CI, which builds it and polls `/health` inside the
+  running container on every push. Marked `Done (untested)` in the roadmap until the author
+  runs it by hand.
+- **No authentication, no CRM write-back, no model management over HTTP.** Each belongs to a
+  later project in the roadmap; adding them here would be scope nobody asked for.
+
 ## Quickstart
 
 Python 3.11 or newer. No other tool is required.

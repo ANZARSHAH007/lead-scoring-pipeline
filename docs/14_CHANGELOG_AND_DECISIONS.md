@@ -417,6 +417,60 @@ this project. The request body now carries exactly the 13 admissible columns, do
 so, and `test_api.py` asserts the field map matches `config.shipping_features()` so the two
 cannot drift apart.
 
+### D-026 - The dashboard's logic lives outside the Streamlit script
+
+**Date** 2026-11-19 - **Status** accepted
+
+A Streamlit script renders as it runs, which makes it awkward to test and tempting to leave
+untested. The parts of the dashboard that can be wrong on their own - reading an upload,
+deciding whether it is usable, mapping it to API payloads, interpreting an error - are
+therefore in `dashboard/client.py`, and `app.py` only draws.
+
+That split paid for itself immediately: **37 tests** cover the client, including a test that
+every generated payload validates against the real `api.schemas.Lead` model, which is the
+strongest check available without a running server. Two bugs were caught by it before the
+page was ever opened - `prospect_id` being reported as an unknown column, and a CSV exported
+elsewhere not parsing its booleans.
+
+The pages themselves are rendered by Streamlit's own `AppTest`, so a page that raises fails
+the suite rather than showing a stack trace to a visitor.
+
+**Rejected:** testing the dashboard through a browser driver. It would be slower, flakier,
+and would mostly test Streamlit.
+
+### D-027 - The synthetic fixture gets per-column levels
+
+**Date** 2026-11-19 - **Status** accepted
+
+`fixtures.synthetic_leads` filled every form column from one shared list, which was fine
+while the fixture was only a shape for tests. Phase 6 made it visible: the dashboard's empty
+state offers a sample CSV built from it, and that sample had specialisations in the `city`
+column and lead origins in `lead_source`.
+
+A sample file is the first data a reviewer sees, and one full of nonsense teaches the wrong
+thing about the dataset. So origin, source and each form column now draw from their own
+plausible levels, with `Select` still the most common value in the columns where the real form
+offers it. All 229 existing tests passed unchanged afterwards, which is the useful part: they
+were written against properties, not against particular values.
+
+### D-028 - Docker is proved by CI rather than installed locally
+
+**Date** 2026-11-19 - **Status** accepted
+
+Docker is not installed on the owner's machine and installing it is a machine-wide change
+(OQ-3). The options were to install it, to skip the container, or to write the image and let
+CI prove it. The owner chose the third.
+
+CI now builds the image on every push, starts the container, polls `/health`, scores a lead
+through it and reports the image size against the 1.5 GB target in NFR-5. That is a stronger
+check than a local `docker build` only the author ever runs - but it is not the same as the
+owner having run `docker compose up`, so T-602 is marked **Done (untested locally)** and the
+README's *What is not here* section says so plainly rather than implying a verified container.
+
+**Rejected:** marking T-602 `Done (verified)` on the strength of a CI run that has not
+happened yet. The workflow has never executed; the first push is what makes it real.
+
+### Next decision
 ---
 
 ## Changelog
@@ -748,6 +802,55 @@ on. `live_accuracy()` on the log becomes computable the moment real outcomes arr
 **Verified:** `ruff check src tests scripts` clean; **229 tests pass** (192 + 37); p95
 latency read back from the prediction log is well inside the 300 ms target; the prediction
 database is git-ignored and nothing from a run reaches the repo.
+
+### 2026-11-19 - Phase 6: the demo surface, the image and CI
+
+Three of the five tasks are done, one is prepared for the owner, and one waits on it. The
+honest shape of that is in the roadmap rather than rounded up.
+
+**T-601, the dashboard - done and verified.** Three pages per docs/04: rank an uploaded CSV
+(the default), try one lead, read the model card. The logic sits in `dashboard/client.py` so
+it can be tested (D-026) and `app.py` only draws. All three pages were rendered against the
+live API through Streamlit's `AppTest` harness with **zero errors and zero warnings**, and
+submitting the single-lead form returned a real score with three reasons from the live model.
+**37 tests**, which found two bugs before the page was opened: `prospect_id` reported as an
+unknown column, and booleans from a foreign CSV (`Yes`, `TRUE`, `0`) not parsing.
+
+**T-602, the image - written, not run here.** Multi-stage, base pinned by a digest resolved
+from Docker Hub on the day rather than pasted from memory, non-root uid 10001, `HEALTHCHECK`,
+and one image with three modes: `api`, `dashboard`, and `both` for Hugging Face Spaces, which
+runs a single container. Docker is not installed on this machine, so this is **untested
+locally** and CI is what proves it (D-028).
+
+**T-603, CI - written, not yet green.** Two jobs. `check` runs on every push with no secrets:
+doctor, ruff, the full test suite, `docker build`, then it starts the container, polls `/health`, scores
+a lead through it, and warns if the image exceeds the 1.5 GB target. `model` runs on `main`
+only: downloads the dataset with the owner's Kaggle secrets, retrains, lets the quality gate
+decide, and checks the README still matches the card. A failing gate fails the build.
+
+**T-604, the deploy - prepared, needs the owner's account.** Hugging Face Spaces, Docker SDK
+(OQ-8 answered). `deploy/huggingface/` holds the Space's README front matter
+(`app_port: 8501`) and step-by-step instructions, including the one awkward part: the Space
+repo must carry `models/model.joblib`, which the GitHub repo deliberately does not.
+
+**T-605, the README - partly done.** Results table generated from the card, an architecture
+diagram showing the two lanes separated by a file, and a *What is not here* section listing
+the missing demo URL, the missing GIF and the unverified container. The GIF records the
+deployed demo, so it waits on T-604.
+
+**Four open questions closed** by the owner today: OQ-3 (do not install Docker; CI proves
+it), OQ-5 (Streamlit stays), OQ-8 (Hugging Face Spaces), OQ-10 (yes, CI retrains on `main`).
+
+**What the owner has to do, and nobody else can:**
+
+1. add `KAGGLE_USERNAME` and `KAGGLE_KEY` as repository secrets, or the `model` job fails
+   with a message saying exactly that;
+2. follow `deploy/huggingface/DEPLOY.md` to create the Space and get the URL.
+
+**Verified:** `ruff check src tests scripts dashboard` clean; **266 tests pass**; the API and
+dashboard ran together locally; `publish_results.py --check` reports no drift; the workflow
+YAML parses. Not verified, and said so in three places: the Docker build and the CI run
+itself.
 
 ### Next entry
 

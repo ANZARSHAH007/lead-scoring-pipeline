@@ -39,10 +39,42 @@ DEFAULT_SEED = 7
 #: The column that carries the synthetic signal, matching `train.ONE_RULE_COLUMN`.
 SIGNAL_COLUMN = "Total Time Spent on Website"
 
-_SOURCE_LEVELS = ("API", "Landing Page Submission", "Lead Add Form", "Lead Import")
-_FORM_LEVELS = ("Select", "Finance Management", "Marketing Management", "Operations", "Other")
+#: Origin and source are different questions in the real upload, so they get different
+#: levels here too - see the note on _FORM_LEVELS below.
+_ORIGIN_LEVELS = ("Landing Page Submission", "API", "Lead Add Form", "Lead Import")
+_LEAD_SOURCE_LEVELS = (
+    "Google", "Direct Traffic", "Olark Chat", "Organic Search", "Reference",
+    "Welingak Website",
+)
 _ACTIVITY_LEVELS = ("Email Opened", "SMS Sent", "Olark Chat Conversation", "Page Visited")
 _YES_NO = ("No", "Yes")
+
+#: Per-column levels. One shared list would be simpler and would put specialisations in the
+#: city column, which matters because this fixture is also the sample CSV a reviewer
+#: downloads from the dashboard - a sample full of nonsense teaches the wrong thing about the
+#: data. `Select` stays in the columns where the real form offers it.
+_FORM_LEVELS: dict[str, tuple[str, ...]] = {
+    "Specialization": (
+        "Select", "Finance Management", "Marketing Management", "Operations Management",
+        "Business Administration",
+    ),
+    "What is your current occupation": (
+        "Select", "Unemployed", "Working Professional", "Student", "Businessman",
+    ),
+    "What matters most to you in choosing a course": (
+        "Select", "Better Career Prospects", "Flexibility & Convenience", "Other",
+    ),
+    "City": (
+        "Select", "Mumbai", "Thane & Outskirts", "Other Metro Cities", "Pune",
+    ),
+    "Country": (
+        "Select", "India", "United States", "United Arab Emirates", "Singapore",
+    ),
+    "How did you hear about X Education": (
+        "Select", "Online Search", "Word Of Mouth", "Advertisements", "Email",
+    ),
+}
+_FORM_FALLBACK = ("Select", "Other")
 
 
 def _intercept_for_target_rate(signal: np.ndarray, scale: float, rate: float) -> float:
@@ -90,13 +122,16 @@ def synthetic_leads(
         values[rng.random(rows) < 0.03] = np.nan
         data[column] = values
 
-    for column in cfg.SOURCE_FEATURES:
-        data[column] = rng.choice(_SOURCE_LEVELS, rows)
+    data["Lead Origin"] = rng.choice(_ORIGIN_LEVELS, rows, p=(0.53, 0.31, 0.08, 0.08))
+    data["Lead Source"] = rng.choice(_LEAD_SOURCE_LEVELS, rows)
 
     # `Select` is a form default, not an answer: the fixture must contain it so that
     # `normalise_select` runs on the fixture path too (docs/02 FR-1).
     for column in cfg.FORM_FEATURES:
-        data[column] = rng.choice(_FORM_LEVELS, rows, p=(0.4, 0.15, 0.15, 0.15, 0.15))
+        levels = _FORM_LEVELS.get(column, _FORM_FALLBACK)
+        # `Select` is deliberately the most common, as it is in the real upload.
+        weights = [0.4] + [0.6 / (len(levels) - 1)] * (len(levels) - 1)
+        data[column] = rng.choice(levels, rows, p=weights)
 
     for column in cfg.CONTACT_PREFERENCE_FEATURES:
         data[column] = rng.choice(_YES_NO, rows, p=(0.92, 0.08))

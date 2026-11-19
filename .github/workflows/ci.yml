@@ -1,0 +1,230 @@
+# Continuous integration (task T-603).
+#
+# Two jobs, and the split matters:
+#
+#   check  - runs on every push and pull request. No dataset, no secrets, no Kaggle token.
+#            Lint, the full test suite on the synthetic fixture, a Docker build, and a poll
+#            of /health inside the running container. This is also what proves the Dockerfile,
+#            because Docker is not installed on the owner's machine (docs/13, OQ-3).
+#
+#   model  - `main` only. Downloads the real dataset with the owner's Kaggle token, retrains,
+#            and lets the quality gate decide. A failing gate fails the build: that is the
+#            whole point of having one (docs/10).
+#
+# Deployment stays manual. A green pipeline does not ship a model; a human reads the gate's
+# numbers and the reliability curve first (docs/12).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  check:
+    name: lint, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.lock
+
+      # From the lockfile, not from pyproject's lower bounds: CI installs what was tested,
+      # which is the reason the lockfile exists (docs/14, D-019).
+      - name: Install from the lockfile
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock
+          python -m pip install --no-deps -e .
+
+      - name: Preflight
+        run: python scripts/doctor.py
+
+      - name: Lint
+        run: ruff check src tests scripts dashboard
+
+      - name: Tests
+        run: python -m pytest -q
+
+      # The model is git-ignored, so the image needs one built here. Tuning is off: this
+      # model exists to prove the image runs, and no number from it is ever published.
+      - name: Train a fixture model for the image
+        env:
+          LEADSCORE_OPTUNA_TRIALS: "0"
+          LEADSCORE_CV_FOLDS: "3"
+        run: |
+          python - <<'PY'
+          import warnings
+          from pathlib import Path
+          from leadscore import config as cfg, evaluate as ev, fixtures, schema, train as tr
+
+          settings = cfg.Settings(_env_file=None, cv_folds=3, optuna_trials=0)
+          with warnings.catch_warnings():
+              warnings.simplefilter("ignore", schema.DataDriftWarning)
+              frame = schema.validate(fixtures.synthetic_leads(rows=600), settings)
+              split = tr.make_split(frame, "shipping", settings)
+              model = tr.build_lightgbm(tr.DEFAULT_LGBM, settings).fit(split.x_train, split.y_train)
+
+          card = {
+              "model_version": "ci-fixture",
+              "created_at": "1970-01-01T00:00:00+00:00",
+              "calibration": {"method": "none"},
+              "grades": {"A_from_score": 70, "B_from_score": 30, "C_from_score": 0},
+              "features": {
+                  "admissible_source_columns": list(cfg.shipping_features()),
+                  "excluded": {"banned_for_leakage": list(cfg.BANNED_LEAKAGE_COLUMNS)},
+              },
+              "test_metrics": [],
+              "limitations": ["A fixture model built in CI. No number from it means anything."],
+          }
+          ev.save_model_bundle(model=model, explainer_model=model, card=card, settings=settings)
+          ev.write_model_card(card, settings)
+          print("fixture model written for the image build")
+          PY
+
+      - name: Build the image
+        run: docker build -t leadscore:ci .
+
+      # The check the owner's machine cannot run: start the container and ask it whether it
+      # is alive. A Dockerfile that builds and will not serve has told you nothing.
+      - name: Run the image and poll /health
+        run: |
+          docker run -d --name leadscore-ci -p 8000:8000 leadscore:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health > /tmp/health.json; then
+              echo "healthy after ${attempt}s:"
+              cat /tmp/health.json
+              break
+            fi
+            if [ "${attempt}" -eq 30 ]; then
+              echo "::error::the container never became healthy"
+              docker logs leadscore-ci
+              exit 1
+            fi
+            sleep 1
+          done
+          python -c "
+          import json, sys
+          body = json.load(open('/tmp/health.json'))
+          assert body['model_loaded'] is True, body
+          assert body['model_version'], body
+          print('model_version:', body['model_version'])
+          "
+
+      - name: Score a lead through the running container
+        run: |
+          curl -fsS -X POST http://127.0.0.1:8000/score \
+            -H 'content-type: application/json' \
+            -d '{"prospect_id":"ci-1","lead_origin":"API","total_time_spent_on_website":900}' \
+            | tee /tmp/score.json
+          python -c "
+          import json
+          body = json.load(open('/tmp/score.json'))
+          assert 0 <= body['score'] <= 100, body
+          assert body['grade'] in {'A','B','C'}, body
+          assert len(body['reasons']) == 3, body
+          print('scored', body['score'], body['grade'])
+          "
+
+      - name: Report the image size against the 1.5 GB target
+        run: |
+          SIZE=$(docker image inspect leadscore:ci --format '{{.Size}}')
+          MB=$((SIZE / 1048576))
+          echo "image size: ${MB} MB (NFR-5 target: under 1536 MB)"
+          if [ "${MB}" -gt 1536 ]; then
+            echo "::warning::the image is ${MB} MB, over the 1.5 GB target in docs/02"
+          fi
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f leadscore-ci || true
+
+  model:
+    name: retrain and gate (main only)
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.lock
+
+      - name: Install from the lockfile
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock
+          python -m pip install --no-deps -e .
+
+      # The Kaggle token is the only real secret in this project. It exists in exactly two
+      # places: the owner's .env.local and these repository secrets (docs/09).
+      - name: Download the dataset
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          if [ -z "${KAGGLE_USERNAME}" ] || [ -z "${KAGGLE_KEY}" ]; then
+            echo "::error::KAGGLE_USERNAME and KAGGLE_KEY are not set as repository secrets."
+            echo "Add them under Settings > Secrets and variables > Actions, or remove this job."
+            exit 1
+          fi
+          python -m pip install --quiet kaggle
+          mkdir -p data/raw
+          kaggle datasets download -d ashydv/leads-dataset -p /tmp/leads --unzip
+          find /tmp/leads -iname 'Leads.csv' -exec cp {} data/raw/Leads.csv \;
+          test -f data/raw/Leads.csv || { echo "::error::Leads.csv not found in the archive"; exit 1; }
+
+      - name: Verify the dataset before using it
+        run: python scripts/check_data.py
+
+      # The real run: selection, one pass over the held-out rows, the gate. A non-zero exit
+      # here means the gate refused the model, and the build fails with it.
+      - name: Train, evaluate once, and run the quality gate
+        run: python -m leadscore.train
+
+      - name: Check the README still matches the card
+        run: python scripts/publish_results.py --check
+
+      - name: Upload the model and its card
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-${{ github.sha }}
+          path: |
+            models/model.joblib
+            models/model_card.json
+            reports/04_evaluation.md
+            reports/figures/
+          retention-days: 30
+
+      # Never the dataset, never the prediction log. An artifact is a build output, not a
+      # place to leak third-party data into (docs/09).
+      - name: Confirm no dataset is left in the workspace tracking area
+        if: always()
+        run: |
+          git status --porcelain | grep -E 'Leads\.csv|\.db$' && {
+            echo "::error::the dataset or a database is visible to git"
+            exit 1
+          } || echo "clean: no dataset or database tracked"

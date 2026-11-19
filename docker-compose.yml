@@ -1,0 +1,52 @@
+# Two services from one image (task T-602).
+#
+# Same build, two entrypoints, so the API and the dashboard cannot drift apart. The dashboard
+# waits for the API's healthcheck rather than starting beside it and showing "service not
+# responding" for the first ten seconds.
+#
+# NOT RUN LOCALLY: Docker is not installed on the owner's machine (docs/13, OQ-3). CI builds
+# the image and polls /health inside it, which is what proves this file.
+#
+#   docker compose up --build
+#   API        http://localhost:8000/docs
+#   Dashboard  http://localhost:8501
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: leadscore:local
+    command: ["api"]
+    ports:
+      - "8000:8000"
+    environment:
+      LEADSCORE_LOG_LEVEL: INFO
+      # The prediction log lives on a named volume, so restarting the stack does not
+      # discard what was scored. In the public demo it is ephemeral on purpose - see docs/12.
+      LEADSCORE_DB_PATH: /app/data/predictions.db
+    volumes:
+      - predictions:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+
+  dashboard:
+    image: leadscore:local
+    command: ["dashboard"]
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8501:8501"
+    environment:
+      # Service name, not localhost: inside the compose network the API is reachable by name.
+      LEADSCORE_API_BASE_URL: http://api:8000
+    restart: unless-stopped
+
+volumes:
+  predictions:

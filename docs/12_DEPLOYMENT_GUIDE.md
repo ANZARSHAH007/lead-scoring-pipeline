@@ -1,6 +1,6 @@
 # 12 — Deployment Guide
 
-Written in advance of Phase 6. Anything in here not yet executed is marked **[planned]**; nothing claims to work until it has been run.
+Written in advance of Phase 6, and revised on 2026-11-19 once the files existed. The three markers below mean what they say: **[written]** is in the repo and reviewed but has never run; **[verified]** has run and the output was read; **[planned]** does not exist yet. Docker is not installed on the owner's machine (OQ-3), so the image is **[written]** and CI is what proves it (D-028).
 
 ## Environments
 
@@ -34,7 +34,7 @@ Every setting is an environment variable with a documented default in `.env.exam
 
 One image, two entrypoints — the API and the dashboard are the same code and the same dependencies, so one build serves both and they cannot drift apart.
 
-**[planned]** `Dockerfile` requirements:
+**[written]** `Dockerfile` — multi-stage, in the repo, never built locally. It meets these requirements by construction, and CI is what confirms they hold:
 
 - multi-stage: a build stage installs from the lockfile, the final stage copies only the virtualenv, `src/`, `dashboard/` and `models/`
 - pinned base image **by digest**, not a floating tag
@@ -44,7 +44,9 @@ One image, two entrypoints — the API and the dashboard are the same code and t
 - `HEALTHCHECK` hitting `/health`
 - target: image < 1.5 GB (NFR-5); LightGBM, SHAP and matplotlib are the weight — no notebook dependencies in the image
 
-**[planned]** `docker-compose.yml`: two services from the one image (`api` on 8000, `dashboard` on 8501), the dashboard depending on the API's healthcheck, the prediction DB on a named volume, and a `.env` file for local settings.
+**[written]** `docker-compose.yml`: two services from the one image (`api` on 8000, `dashboard` on 8501), the dashboard gated on the API's `service_healthy` condition, and the prediction database on a named volume so a restart does not discard it. The dashboard reaches the API by service name (`http://api:8000`), not localhost.
+
+**A third mode exists for Spaces.** `docker/entrypoint.sh` takes `api`, `dashboard` or `both`; `both` starts Uvicorn on loopback, waits for `/health` to answer, then starts Streamlit in the foreground. Hugging Face runs one container, which is the only reason that mode exists.
 
 ## Local run
 
@@ -65,16 +67,18 @@ Without Docker (current state of this machine — see OQ-3): `make serve` runs U
 
 ## CI/CD
 
-**[planned]** `.github/workflows/ci.yml`, as specified in doc 10:
+**[written]** `.github/workflows/ci.yml` — in the repo, never executed; the first push is what makes it real. Two jobs:
 
-- **every push:** install from `requirements.lock` → `scripts/doctor.py` → `ruff` → `pytest` (synthetic fixture only, no dataset needed — `src/leadscore/fixtures.py`) → `docker build` → run the image and poll `/health`
-- **`main` only:** download the dataset with the Kaggle secret → `make train` → the model quality gate → upload `model.joblib` and `model_card.json` as build artifacts
+- **`check`, every push and pull request, no secrets:** install from `requirements.lock` → `scripts/doctor.py` → `ruff` → `pytest` (synthetic fixture only, no dataset needed) → train a throwaway fixture model so the image has one → `docker build` → start the container, poll `/health`, **score a lead through it**, and warn if the image exceeds the 1.5 GB target (NFR-5)
+- **`model`, pushes to `main` only:** download the dataset with `KAGGLE_USERNAME` / `KAGGLE_KEY` → `scripts/check_data.py` → `python -m leadscore.train`, which opens the test set once and runs the quality gate → `publish_results.py --check` so a stale README fails the build → upload the model, its card and report 04 as artifacts for 30 days
+
+**The owner must add those two secrets** (Settings → Secrets and variables → Actions). Until then the `model` job fails with a message naming them, which is deliberate: skipping silently would make a green tick mean less than it appears to (OQ-10).
 
 Deployment stays **manual** in P1. A push that passes CI does not ship a model; a human looks at the gate's numbers and the reliability curve and then deploys. Automatic model promotion needs monitoring that P1 does not have, and pretending otherwise would be the kind of shortcut the roadmap exists to avoid.
 
 ## Deploying the demo
 
-**[planned]** Hugging Face Spaces, Docker SDK:
+**[planned]** Hugging Face Spaces, Docker SDK (OQ-8 answered 2026-11-19). Full step-by-step in `deploy/huggingface/DEPLOY.md`, including the one thing that is easy to get wrong: **the Space repo carries `models/model.joblib`, which the GitHub repo deliberately does not**, so the model is copied in by hand at step 4. Outline:
 
 1. verify the free tier's current CPU, RAM and sleep policy — limits change, so they are checked at deploy time rather than trusted from memory
 2. create a Space, SDK = Docker

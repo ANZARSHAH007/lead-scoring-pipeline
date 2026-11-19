@@ -90,7 +90,7 @@ quote-style = "double"
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 addopts = "-q --strict-markers --strict-config"
 markers = [
   "needs_data: requires the real Leads.csv on disk (not run in CI on pull requests)",
