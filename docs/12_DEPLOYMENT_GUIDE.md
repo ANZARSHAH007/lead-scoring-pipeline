@@ -26,7 +26,7 @@ Every setting is an environment variable with a documented default in `.env.exam
 | `LEADSCORE_API_KEY` | empty | empty | set only if the demo is abused |
 | `LEADSCORE_LOG_LEVEL` | `INFO` | `WARNING` | `INFO` |
 | `MLFLOW_TRACKING_URI` | `sqlite:///mlflow.db` | `sqlite:///mlflow.db` | unset — no tracking in the demo |
-| `KAGGLE_USERNAME` / `KAGGLE_KEY` | `.env.local` | **GitHub secrets** | unset |
+| `KAGGLE_API_TOKEN` | `~/.kaggle/access_token` | **GitHub secret** | unset — the demo never trains |
 
 **Secrets rule:** the Kaggle token is the only real secret, and it exists in exactly two places — the owner's machine (`.env.local`, git-ignored) and GitHub Actions secrets. Never in the image, never in a log, never in a doc. Full rules in doc 09.
 
@@ -70,7 +70,7 @@ Without Docker (current state of this machine — see OQ-3): `make serve` runs U
 **[written]** `.github/workflows/ci.yml` — in the repo, never executed; the first push is what makes it real. Two jobs:
 
 - **`check`, every push and pull request, no secrets:** install from `requirements.lock` → `scripts/doctor.py` → `ruff` → `pytest` (synthetic fixture only, no dataset needed) → train a throwaway fixture model so the image has one → `docker build` → start the container, poll `/health`, **score a lead through it**, and warn if the image exceeds the 1.5 GB target (NFR-5)
-- **`model`, pushes to `main` only:** download the dataset with `KAGGLE_USERNAME` / `KAGGLE_KEY` → `scripts/check_data.py` → `python -m leadscore.train`, which opens the test set once and runs the quality gate → `publish_results.py --check` so a stale README fails the build → upload the model, its card and report 04 as artifacts for 30 days
+- **`model`, pushes to `main` only:** download the dataset with `KAGGLE_API_TOKEN` → `scripts/check_data.py` → `python -m leadscore.train`, which opens the test set once and runs the quality gate → `publish_results.py --check` so a stale README fails the build → upload the model, its card and report 04 as artifacts for 30 days
 
 **The owner must add those two secrets** (Settings → Secrets and variables → Actions). Until then the `model` job fails with a message naming them, which is deliberate: skipping silently would make a green tick mean less than it appears to (OQ-10).
 

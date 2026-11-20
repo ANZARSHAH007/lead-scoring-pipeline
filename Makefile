@@ -18,7 +18,7 @@ help:
 	@echo "venv         create $(VENV) with $(PY)"
 	@echo "install      install the project and dev tools (full ML stack, large)"
 	@echo "install-min  install only what the current phase needs (config + tests)"
-	@echo "lock         rewrite requirements.lock from the current environment"
+	@echo "lock         rewrite requirements.lock, markers restored (scripts/lock.py)"
 	@echo "doctor       check this machine can run the pipeline, in ~2 seconds"
 	@echo "lint         ruff check"
 	@echo "format       ruff format"
@@ -46,7 +46,7 @@ install-min:
 # Pinned resolution of what actually works. Regenerate deliberately: a dependency that
 # moves on its own is how MLflow 3.18 broke tracking with no change on our side (D-017).
 lock:
-	$(BIN)/python -m pip freeze --exclude-editable > requirements.lock
+	$(BIN)/python scripts/lock.py
 
 # Run this before training and after any dependency change. Two seconds, and it answers
 # what a three-minute training run would otherwise tell you at the end.

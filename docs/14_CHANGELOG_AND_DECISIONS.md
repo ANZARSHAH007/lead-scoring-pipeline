@@ -509,6 +509,51 @@ comment.
 sentence looked like boilerplate. It was the most valuable line in the document.
 
 ### Next decision
+### D-030 - Kaggle issues one token now, not a username and a key
+
+**Date** 2026-11-20 - **Status** accepted
+
+Kaggle replaced the `kaggle.json` username-and-key pair with a single `KGAT_...` token read
+from `KAGGLE_API_TOKEN`, or from `~/.kaggle/access_token`. The CI job and the setup
+instructions were written against the old scheme and would have failed on the first real run.
+
+Now: one repository secret, `KAGGLE_API_TOKEN`; `.gitignore` covers `access_token` and
+`.kaggle/` as well as `kaggle.json`; `.env.example` and docs/09 describe the new shape.
+
+**Verified with the real token before relying on it** (the owner supplied it deliberately for
+this check): `kaggle datasets download -d ashydv/leads-dataset --unzip` succeeded with only
+`KAGGLE_API_TOKEN` set, and `scripts/check_data.py` on the freshly downloaded file passed all
+12 checks with drift 0.0000 against the documented shape. So the CI retrain will see the same
+data this project's results came from - which was worth knowing before a retrain could
+quietly produce a different model.
+
+### D-031 - A lockfile taken from `pip freeze` on Windows is not portable
+
+**Date** 2026-11-20 - **Status** accepted
+
+CI run #1 failed in 16 seconds. The cause was not the Dockerfile, the tests, or the workflow:
+`requirements.lock` contained `pywin32==312`, because `pip freeze` writes what is installed
+and strips the environment marker that `docker` declares (`pywin32>=304; sys_platform ==
+"win32"`). There is no Linux distribution of `pywin32`, so the install died immediately.
+
+Two things came out of it, and the second matters more than the first.
+
+**The fix:** `scripts/lock.py` regenerates the lockfile and restores the markers for the
+platform-specific packages, and `make lock` now calls it instead of running a bare freeze.
+Simulating a Linux install against the repaired file: 135 packages install, `pywin32` and
+`colorama` are correctly skipped.
+
+**The thing the failure exposed:** the lockfile was also **missing Streamlit**. It was
+installed during Phase 6 and the lock was never regenerated, so the Docker image - which
+installs from that file - would have had no Streamlit at all. CI's health check runs the
+container in `api` mode, so a green run would not have caught it; the dashboard would simply
+have been broken in the only place it mattered. A failure in one dependency exposed a hole in
+another, which is the argument for having the pipeline run at all.
+
+CI now runs `scripts/lock.py --check` **before** installing, so this class of problem is
+reported in one second rather than discovered ten seconds later with a confusing message.
+
+### Next decision
 ---
 
 ## Changelog

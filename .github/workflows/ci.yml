@@ -47,6 +47,12 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.lock
 
+      # Before the install, not after: this is the check that would have caught run #1 in
+      # one second instead of ten. `pip freeze` on Windows writes a bare `pywin32==312`,
+      # which has no Linux distribution at all (D-031). Needs no dependencies of its own.
+      - name: Lockfile is portable
+        run: python scripts/lock.py --check
+
       # From the lockfile, not from pyproject's lower bounds: CI installs what was tested,
       # which is the reason the lockfile exists (docs/14, D-019).
       - name: Install from the lockfile
@@ -180,15 +186,18 @@ jobs:
           python -m pip install --no-deps -e .
 
       # The Kaggle token is the only real secret in this project. It exists in exactly two
-      # places: the owner's .env.local and these repository secrets (docs/09).
+      # places: the owner's machine and this repository secret (docs/09).
+      #
+      # Kaggle replaced username+key with a single `KGAT_...` token in 2026 (D-030). The CLI
+      # reads it from KAGGLE_API_TOKEN, so nothing has to be written to disk here.
       - name: Download the dataset
         env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
         run: |
-          if [ -z "${KAGGLE_USERNAME}" ] || [ -z "${KAGGLE_KEY}" ]; then
-            echo "::error::KAGGLE_USERNAME and KAGGLE_KEY are not set as repository secrets."
-            echo "Add them under Settings > Secrets and variables > Actions, or remove this job."
+          if [ -z "${KAGGLE_API_TOKEN}" ]; then
+            echo "::error::KAGGLE_API_TOKEN is not set as a repository secret."
+            echo "Create one at kaggle.com/settings (API -> Create New Token), then add it"
+            echo "under Settings > Secrets and variables > Actions, or remove this job."
             exit 1
           fi
           python -m pip install --quiet kaggle

@@ -30,7 +30,9 @@ An optional shared-secret header exists (`LEADSCORE_API_KEY`, empty by default).
 
 - No secret, key, token or credential in source, in a notebook, in a docstring, in a test fixture, or in the README.
 - `.env.example` lists every setting by **name** with a safe default; real values live in `.env.local`, which is git-ignored.
-- The only genuine secret P1 needs is the **Kaggle API token**, used by CI to download the dataset. It lives in GitHub Actions secrets (`KAGGLE_USERNAME`, `KAGGLE_KEY`) and nowhere else. Never printed, never echoed in a log.
+- The only genuine secret P1 needs is the **Kaggle API token**, used by CI to download the dataset. Since 2026 Kaggle issues a single `KGAT_...` token instead of a username and key (D-030), so it is one GitHub Actions secret, `KAGGLE_API_TOKEN`, and nowhere else. Never printed, never echoed in a log.
+- Locally it belongs in `~/.kaggle/access_token`, which is where Kaggle's client looks for it. `.gitignore` covers `kaggle.json`, `access_token` and `.kaggle/` by name, so a stray copy inside the repo cannot be committed by accident.
+- **If it is ever exposed** — pasted into a chat, captured in a screenshot, committed — treat it as burned and replace it: kaggle.com → Settings → API → expire the old token and create a new one, then update the repository secret. It only reads public datasets, so the blast radius is small, but a token that has been seen is no longer a secret.
 - Host configuration (Hugging Face Spaces / Render) is set in that platform's own secret store.
 - `kaggle.json` is in `.gitignore` by name.
 

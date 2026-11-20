@@ -20,6 +20,8 @@ mlflow.db
 .env.local
 .env.*.local
 kaggle.json
+access_token
+.kaggle/
 
 # python
 __pycache__/

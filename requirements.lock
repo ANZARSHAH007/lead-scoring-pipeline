@@ -1,30 +1,34 @@
 # Resolved dependency set for the Lead Scoring Pipeline — DO NOT hand-edit.
+# Regenerate with: .venv/Scripts/python scripts/lock.py
 #
 # Why this file exists: in Phase 3 MLflow moved to 3.18 under a floating `mlflow>=2.16`
-# lower bound and retired the plain file store, which broke tracking with no code change
-# on our side (D-017). Lower bounds in pyproject.toml say what the project needs; this
-# file says what actually worked, so a second machine and CI install the same thing.
+# lower bound and retired the plain file store, which broke tracking with no code change on
+# our side (D-017). Lower bounds in pyproject.toml say what the project needs; this file says
+# what actually worked, so a second machine and CI install the same thing.
 #
-# Two pins are deliberate rather than incidental:
-#   sqlalchemy stays below 2.1, because MLflow 3.18 declares a `lazy="noload"`
-#     relationship that 2.1 deprecates (D-019);
-#   httpx2 rather than httpx, because Starlette 1.10 moved TestClient onto it (D-024).
+# Three pins are deliberate rather than incidental:
+#   sqlalchemy stays below 2.1, because MLflow 3.18 declares a `lazy="noload"` relationship
+#     that 2.1 deprecates (D-019);
+#   httpx2 rather than httpx, because Starlette 1.10 moved TestClient onto it (D-024);
+#   the `; sys_platform == ...` markers below are restored by scripts/lock.py, because
+#     `pip freeze` drops them and a Windows-only package then breaks the Linux CI run (D-031).
 #
-# Regenerate deliberately, never casually:
-#   .venv/Scripts/python -m pip freeze --exclude-editable > requirements.lock
+# After regenerating, verify before committing:
 #   .venv/Scripts/python scripts/doctor.py && .venv/Scripts/python -m pytest
-# then record the upgrade in docs/14.
+# then record any upgrade in docs/14.
 #
-# Generated 2026-11-19 on Python 3.11.9, Windows 11. 114 packages.
+# Generated 2026-11-20 on Python 3.11.9, Windows. 137 packages.
 
 aiohappyeyeballs==2.7.1
 aiohttp==3.14.5
 aiosignal==1.4.0
 alembic==1.20.1
+altair==6.3.0
 annotated-doc==0.0.6
 annotated-types==0.8.0
 anyio==4.16.0
 attrs==26.1.0
+bleach==6.4.0
 blinker==1.9.0
 cachetools==7.3.2
 certifi==2026.10.23
@@ -32,7 +36,7 @@ cffi==2.1.1
 charset-normalizer==3.5.2
 click==8.5.1
 cloudpickle==3.1.2
-colorama==0.4.6
+colorama==0.4.6; sys_platform == "win32"
 colorlog==6.12.0
 contourpy==1.3.3
 cryptography==50.0.2
@@ -40,6 +44,7 @@ cycler==0.12.1
 databricks-sdk==0.167.0
 docker==7.2.0
 fastapi==0.163.1
+fastjsonschema==2.22.3
 Flask==3.1.3
 flask-cors==6.0.5
 fonttools==4.68.0
@@ -61,19 +66,28 @@ iniconfig==2.3.1
 itsdangerous==2.2.0
 Jinja2==3.1.6
 joblib==1.6.0
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+jupyter_core==5.9.1
+jupytext==1.19.6
+kagglesdk==0.1.38
 kiwisolver==1.5.1
 lazy-importer==0.1.0
 lightgbm==4.7.0
 llvmlite==0.50.0
 Mako==1.4.3
+markdown-it-py==4.3.0
 MarkupSafe==3.0.4
 matplotlib==3.11.2
+mdit-py-plugins==0.7.0
+mdurl==0.1.2
 mlflow==3.18.0
 mlflow-skinny==3.18.0
 mlflow-tracing==3.18.0
 multidict==7.2.1
 mypy_extensions==1.2.0
 narwhals==2.28.0
+nbformat==5.11.1
 numba==0.68.1
 numpy==2.4.6
 opentelemetry-api==1.45.2
@@ -85,6 +99,7 @@ packaging==26.3
 pandas==3.1.1
 pandera==0.36.0
 pillow==13.0.0
+platformdirs==4.14.7
 pluggy==1.7.0
 prettytable==3.19.0
 propcache==0.5.4
@@ -96,15 +111,19 @@ pycparser==3.12
 pydantic==2.14.3
 pydantic-settings==2.16.2
 pydantic_core==2.50.4
+pydeck==0.9.3
 Pygments==2.21.0
 pyparsing==3.3.3
 pytest==9.2.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.4
 python-multipart==0.0.34
-pywin32==312
+python-slugify==9.2.0
+pywin32==312; sys_platform == "win32"
 PyYAML==6.0.3
+referencing==0.37.0
 requests==2.34.2
+rpds-py==2026.9.1
 ruff==0.17.5
 scikit-learn==1.9.1
 scipy==1.17.1
@@ -116,8 +135,11 @@ smmap==5.0.3
 SQLAlchemy==2.0.58
 sqlparse==0.6.1
 starlette==1.10.0
+streamlit==1.67.0
+text-unidecode==1.3
 threadpoolctl==3.8.0
 tqdm==4.70.1
+traitlets==5.16.1
 truststore==0.10.5
 typeguard==4.6.0
 typing-inspect==0.9.0
@@ -127,7 +149,10 @@ tzdata==2026.6
 urllib3==2.8.0
 uvicorn==0.54.0
 waitress==3.0.2
+watchdog==7.1.0
 wcwidth==0.9.4
+webencodings==0.6.1
+websockets==17.4
 Werkzeug==3.1.9
 yarl==1.25.1
 zipp==4.1.2
