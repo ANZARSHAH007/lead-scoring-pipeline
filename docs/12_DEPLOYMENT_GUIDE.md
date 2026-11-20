@@ -134,6 +134,7 @@ What is missing and known: no alerting, no error aggregation, no dashboard of dr
 - [ ] `model_card.json` metrics filled from a real run, no `null`s
 - [ ] README results table matches the card
 - [ ] image builds, runs as non-root, `/health` returns the expected version
+- [ ] the image's **runtime libraries** are present, not just its Python packages — LightGBM needs `libgomp1` on Debian, and a missing one of these builds cleanly and fails at import (D-032). CI's `Imports work inside the image` step is what checks this
 - [ ] demo URL live; cold-start caveat noted beside the link
 - [ ] no dataset, model, DB or secret in git history (T-702)
 - [ ] docs 01–14 reconciled with what shipped (T-703)

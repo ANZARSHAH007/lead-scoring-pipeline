@@ -553,6 +553,38 @@ another, which is the argument for having the pipeline run at all.
 CI now runs `scripts/lock.py --check` **before** installing, so this class of problem is
 reported in one second rather than discovered ten seconds later with a confusing message.
 
+### D-032 - A Python package can install and still not import: libgomp1
+
+**Date** 2026-11-20 - **Status** accepted
+
+CI run #2 was real progress: the lockfile check passed, the install passed, doctor passed,
+ruff passed, all 266 tests passed, and - for the first time - **the Docker image built**, in
+124 seconds. Then the health poll failed after 38 seconds with "the container never became
+healthy", and the two steps that would have told us anything were skipped.
+
+The cause is not in our code. LightGBM's Linux wheel links dynamically against the OpenMP
+runtime, `libgomp.so.1`, and the `python:3.11-slim` base image does not ship it. `pip install
+lightgbm` therefore succeeds - pip resolves Python dependencies, not shared libraries - and
+`import lightgbm` then fails with "libgomp.so.1: cannot open shared object file". The API
+refuses to start without a model, so the process exited and nothing ever bound port 8000.
+
+It is invisible on Windows, where the wheel carries its own OpenMP runtime, and invisible to
+the test suite, which runs on the host rather than in the image. Only building and *starting*
+the container can find it, which is the argument for CI doing both.
+
+**The fix:** `libgomp1` is installed alongside `curl` in the runtime stage.
+
+**The more useful fix:** a 2-second step, `Imports work inside the image`, that imports every
+third-party package the image is supposed to contain - lightgbm, shap, sklearn, fastapi,
+uvicorn, streamlit - plus `leadscore.api.main` and `dashboard.client`. A missing shared
+library now reports itself by name in the first line of output instead of as a 30-second
+silence. The poll loop also watches for the container *exiting* and prints the exit code and
+the logs immediately, rather than waiting out a timeout for a process that is already dead.
+
+The pattern across D-031 and D-032 is the same: the Python-level check (a lockfile, a test
+suite) passed, and the thing that broke was one layer below it. Each failure was only
+findable by running the artifact that ships, not the one in the working tree.
+
 ### Next decision
 ---
 

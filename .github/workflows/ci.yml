@@ -109,19 +109,47 @@ jobs:
       - name: Build the image
         run: docker build -t leadscore:ci .
 
+      # Two seconds, and it is the whole difference between a readable failure and a silent
+      # one. Run #2 built the image, then the poll loop below spent 30 s to report only
+      # "never became healthy"; the actual cause was `import lightgbm` dying inside the
+      # container on a missing libgomp.so.1 (D-032). Importing every third-party package the
+      # image is meant to contain puts that in the first line of output instead.
+      #
+      # `--entrypoint python` is required because the image's entrypoint takes a mode name
+      # (api | dashboard | both), not a command. `dashboard.client` is in the list on
+      # purpose: the api-mode health check cannot see a broken dashboard (D-031).
+      - name: Imports work inside the image
+        run: |
+          docker run --rm --entrypoint python leadscore:ci -c "
+          import fastapi, lightgbm, shap, sklearn, streamlit, uvicorn
+          import leadscore.api.main
+          import dashboard.client
+          print('imports ok - lightgbm', lightgbm.__version__, '| streamlit', streamlit.__version__)
+          "
+
       # The check the owner's machine cannot run: start the container and ask it whether it
       # is alive. A Dockerfile that builds and will not serve has told you nothing.
+      #
+      # The loop watches for the container *exiting*, not just for a slow start: a process
+      # that is already dead will never answer, and sitting out the full timeout hides the
+      # error message that was in `docker logs` from the first second.
       - name: Run the image and poll /health
         run: |
           docker run -d --name leadscore-ci -p 8000:8000 leadscore:ci
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 45); do
             if curl -fsS http://127.0.0.1:8000/health > /tmp/health.json; then
               echo "healthy after ${attempt}s:"
               cat /tmp/health.json
               break
             fi
-            if [ "${attempt}" -eq 30 ]; then
-              echo "::error::the container never became healthy"
+            if [ "$(docker inspect -f '{{.State.Running}}' leadscore-ci)" != "true" ]; then
+              CODE=$(docker inspect -f '{{.State.ExitCode}}' leadscore-ci)
+              echo "::error::the container exited with code ${CODE} after ${attempt}s"
+              docker logs leadscore-ci
+              exit 1
+            fi
+            if [ "${attempt}" -eq 45 ]; then
+              echo "::error::the container is alive but never answered /health within 45s"
               docker logs leadscore-ci
               exit 1
             fi

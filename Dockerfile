@@ -51,10 +51,17 @@ ENV PYTHONUNBUFFERED=1 \
     LEADSCORE_DB_PATH=/app/data/predictions.db \
     LEADSCORE_API_BASE_URL=http://127.0.0.1:8000
 
-# curl is here for HEALTHCHECK only. No compiler, no build tools: whatever a final image
-# contains is attack surface, and this one needs neither to run.
+# Two packages, both deliberate:
+#   curl      - for HEALTHCHECK, and nothing else.
+#   libgomp1  - the OpenMP runtime that LightGBM's Linux wheel links against dynamically.
+#               `python:*-slim` does not ship it, so without this line the image builds
+#               perfectly and then dies on `import lightgbm` with "libgomp.so.1: cannot open
+#               shared object file". That is exactly how CI run #2 failed (D-032), and it is
+#               invisible on Windows, where the wheel carries its own OpenMP.
+# Still no compiler and no build tools: whatever a final image contains is attack surface,
+# and this one needs neither to run.
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y curl \
+    && apt-get install --no-install-recommends -y curl libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 leadscore
 

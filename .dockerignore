@@ -1,0 +1,51 @@
+# What never enters the build context (task T-602).
+#
+# Without this file the context is the entire working tree: the dataset, the virtualenv, the
+# git history, every MLflow run. That is slow to upload on every build, and it puts
+# third-party data and local secrets one careless COPY away from a published image (docs/09).
+#
+# NOTHING COPIED BY THE DOCKERFILE MAY BE LISTED HERE. `models/` and `reports/figures/` are
+# both copied, so neither appears below. This is the same trap `.gcloudignore` sets by
+# falling back to `.gitignore` (docs/12): an ignore file that hides the model gives you a
+# green build and a container that cannot start, with no error until it is running.
+
+# --- version control and CI ---
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# --- local environments and caches ---
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# --- secrets and local config: never in an image ---
+.env
+.env.local
+kaggle.json
+access_token
+.kaggle/
+
+# --- third-party data, logs, experiment tracking ---
+data/
+mlruns/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# --- documentation and tooling: not runtime ---
+docs/
+notebooks/
+design-system/
+deploy/
+tests/
+scripts/
+Makefile
+docker-compose.yml
+.dockerignore
