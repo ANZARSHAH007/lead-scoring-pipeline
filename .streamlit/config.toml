@@ -26,9 +26,22 @@ linkColor = "#1E40AF"
 
 font = "sans-serif"
 
-[server]
-# The dashboard is a demo surface. Nothing it receives should be sent anywhere but the API.
-gatherUsageStats = false
+[client]
+# Hide Streamlit's own toolbar: the "Deploy" button, the developer menu and the rerun
+# controls. They are Streamlit's product, not this one, and on a public demo link they
+# invite a visitor to click something that has nothing to do with lead scoring.
+toolbarMode = "viewer"
+
+[theme.sidebar]
+# The sidebar is a panel, not a second page: a white surface against the #F8FAFC body, with
+# the border carrying the separation rather than a colour change.
+backgroundColor = "#FFFFFF"
+borderColor = "#DBEAFE"
+textColor = "#0F172A"
+primaryColor = "#1E40AF"
 
 [browser]
+# The dashboard is a demo surface. Nothing it sees should be sent anywhere but the API.
+# Note: `server.gatherUsageStats` does not exist - setting it only produces a warning on
+# every start. `browser.gatherUsageStats` is the real one.
 gatherUsageStats = false

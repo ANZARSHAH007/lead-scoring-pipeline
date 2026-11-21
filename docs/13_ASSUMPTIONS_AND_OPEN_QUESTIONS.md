@@ -122,6 +122,20 @@ guard on batch writes so one bad row costs one row, and a warning when an older 
 opened that cannot gain them. Seven tests cover it, including the one that matters most —
 scoring still returns 200 when the log refuses to write.
 
+### OQ-14 — Does P1 get a Next.js/React front end as well as the Streamlit demo?
+Raised by the owner on 2026-11-21, after several passes on the dashboard's appearance: a
+Streamlit app looks like a Streamlit app, and a reviewer opening the demo link sees that
+before they see anything else.
+**It is not a rewrite.** The API is the product; Streamlit is one client of it and a Next.js
+app would be a second. Nothing in `src/` changes. What it does cost: a Node toolchain, three
+pages rebuilt, charts, **CORS on the API** (currently unconfigured, since the only caller is
+server-side), a second deployment and CI for it. Two to three days, honestly counted.
+**Answer (owner, 2026-11-21): deploy to Cloud Run first, then decide.** The live link is the
+larger gap — with eight days to delivery and six projects after this one, the demo that
+exists beats the demo that would look better. If time remains before 2026-11-29, the React
+client is upside rather than risk, because the thing it talks to is already built and tested.
+**Blocks:** nothing. **Revisit:** after T-604.
+
 ### OQ-12 — Who is the "friend" for the T-701 README run-through?
 The Phase-1 gate in the roadmap requires someone else to run the repo unaided. Needs a real person named before 2026-11-29. **Owner action.**
 

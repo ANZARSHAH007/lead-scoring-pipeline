@@ -149,7 +149,11 @@ h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }
    first row of data above the fold rather than below a screenful of padding. */
 .block-container {{ padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1180px; }}
 [data-testid="stMetricValue"] {{ font-family: 'Fira Code', monospace; }}
-[data-testid="stVerticalBlock"] {{ gap: 0.6rem; }}
+
+/* NOT a global gap override. Setting `gap` on every stVerticalBlock collapses the spacing
+   Streamlit uses to separate a column row from whatever follows it, and the chart ended up
+   drawn on top of the KPI cards. Density belongs on the elements this page owns. */
+.kpi {{ margin-bottom: 0.4rem; }}
 </style>
 """
 
@@ -286,7 +290,10 @@ def _capture_chart(info: dict) -> None:
         text=alt.Text("capture:Q", format=".1%")
     )
     st.altair_chart(
-        (bars + labels).properties(height=34 * len(frame)).configure_view(stroke=None),
+        (bars + labels)
+        .properties(height=max(150, 46 * len(frame)), padding={"top": 10, "bottom": 6})
+        .configure_view(stroke=None)
+        .configure_axis(labelColor=MUTED_INK, titleColor=MUTED_INK, domainColor=BORDER),
         width='stretch',
     )
 
