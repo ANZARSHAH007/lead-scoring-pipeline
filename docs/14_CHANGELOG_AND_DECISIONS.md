@@ -749,6 +749,38 @@ Six tests cover the new state, including the two that state the intent: the land
 shows the model's numbers before asking for a file, and the chart always has something to
 compare against.
 
+### D-037 - The design system had component specs; the stylesheet had never implemented them
+
+**Date** 2026-11-21 - **Status** accepted
+
+The owner's complaint was that the UI "is not according to design - no button sizing, no
+alignment". Checking rather than arguing: `design-system/lead-scoring-pipeline/MASTER.md`
+specifies a spacing scale, a shadow scale, and component rules for buttons, cards and inputs.
+The dashboard's stylesheet contained **no button rule, no input rule and no spacing tokens at
+all**. Every control was whatever Streamlit shipped by default. The design system was not
+being violated so much as never applied.
+
+What the page now takes from MASTER.md rather than from a number typed into a rule:
+
+* **Spacing and radius as CSS variables** on `:root`, so "more room here" is a token change.
+  Typed-in numbers are how a stylesheet drifts from its design system without anyone
+  deciding to.
+* **Buttons.** One filled accent call to action per view, outlined primary for secondary
+  actions, 12/24 padding, 8px radius, a 1px lift on hover and a press state. `min-height:
+  44px`: the web floor is 24px, but 44 is the figure that holds on a phone and a trackpad
+  alike, and these are the only way through the page.
+* **Cards.** 12px radius, the shadow scale, a 2px hover lift, and - the detail that was
+  making the KPI row read as unfinished - a shared height, so four cards holding numbers of
+  different lengths have one bottom edge.
+* **Inputs.** 16px text, because anything smaller makes iOS Safari zoom the page on focus;
+  focus ring in primary with a 3px halo.
+* **Focus is restyled, never removed.** Priority 1 of the UI guidance and the only thing
+  making the page keyboard-usable.
+
+One layout bug went with it: the sample-download button was stretched to its full column, so
+it sat on a different baseline from the text beside it and read as a banner rather than a
+control. A button is sized by its label.
+
 ### Next decision
 ---
 

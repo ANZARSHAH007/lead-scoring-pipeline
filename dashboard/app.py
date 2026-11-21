@@ -101,8 +101,83 @@ h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }
 [data-testid="stCaptionContainer"], .stApp small {{ color: {MUTED_INK}; }}
 .stApp a {{ color: {PRIMARY}; }}
 
+/* The spacing scale from design-system/.../MASTER.md, as variables rather than as numbers
+   typed into each rule. Everything below spaces itself from these, so "a bit more room
+   here" is a token change rather than a new magic number - which is how the stylesheet
+   drifted from the design system in the first place. */
+:root {{
+  --space-sm: 4px; --space-md: 8px; --space-lg: 12px;
+  --space-xl: 16px; --space-2xl: 24px; --space-3xl: 32px;
+  --radius-control: 8px; --radius-card: 12px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px rgba(15, 23, 42, 0.10);
+  --shadow-lg: 0 10px 15px rgba(15, 23, 42, 0.10);
+  --ease: 200ms ease;
+}}
+
+/* BUTTONS - MASTER.md §Component Specs. The stylesheet had no button rule at all, so every
+   control was whatever Streamlit shipped: inconsistent widths, no hierarchy, and a download
+   button stretched across a column while the text beside it sat on a different baseline.
+   Accent is the call to action, outlined primary is secondary - one CTA per view, per
+   docs/08.
+   `min-height: 44px` is the touch floor. The web minimum is 24px, but 44 is the figure that
+   holds on a phone and a trackpad alike, and these buttons are the only way through the
+   page. */
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button,
+[data-testid^="stBaseButton"] {{
+  min-height: 44px;
+  padding: var(--space-lg) var(--space-2xl);
+  border-radius: var(--radius-control);
+  font-weight: 600;
+  transition: transform var(--ease), box-shadow var(--ease), background var(--ease);
+}}
+.stButton > button:hover, .stDownloadButton > button:hover,
+.stFormSubmitButton > button:hover {{
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}}
+.stButton > button:active, .stDownloadButton > button:active {{ transform: translateY(0); }}
+
+/* The call to action: accent on black, which docs/08 pairs for 8.4:1 contrast. */
+.stFormSubmitButton > button, [data-testid="stBaseButton-primary"] {{
+  background: {ACCENT}; color: #000000; border: 1px solid {ACCENT};
+}}
+.stFormSubmitButton > button:hover, [data-testid="stBaseButton-primary"]:hover {{
+  background: #C06A05; border-color: #C06A05; color: #000000;
+}}
+
+/* Secondary: outlined, never a second filled button competing with the CTA. */
+.stDownloadButton > button, [data-testid="stBaseButton-secondary"] {{
+  background: transparent; color: {PRIMARY}; border: 2px solid {PRIMARY};
+}}
+.stDownloadButton > button:hover, [data-testid="stBaseButton-secondary"]:hover {{
+  background: {PRIMARY}; color: #FFFFFF; border-color: {PRIMARY};
+}}
+
+/* Focus is never removed, only restyled. Priority 1 of the UI guidance, and the only way
+   the page is usable from a keyboard. */
+.stApp *:focus-visible {{
+  outline: 2px solid {PRIMARY}; outline-offset: 2px; border-radius: var(--radius-control);
+}}
+
+/* INPUTS - MASTER.md §Inputs. 16px text, because anything smaller makes iOS Safari zoom the
+   whole page on focus. */
+.stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div {{
+  border-radius: var(--radius-control) !important;
+  font-size: 16px;
+  transition: border-color var(--ease), box-shadow var(--ease);
+}}
+.stTextInput input:focus, .stNumberInput input:focus {{
+  border-color: {PRIMARY} !important;
+  box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.12) !important;
+}}
+
+/* Adjacent controls need room between them: 8px is the floor, and a column gap below that
+   turns two buttons into one target. */
+[data-testid="stHorizontalBlock"] {{ gap: var(--space-xl); }}
+
 .grade-chip {{
-  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  display: inline-block; padding: var(--space-xs, 2px) 10px; border-radius: 999px;
   font-weight: 600; font-size: 0.85rem;
   transition: transform .15s ease;
 }}
@@ -124,17 +199,34 @@ h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }
   .kpi, .reason, .grade-chip {{ animation: none; transition: none; }}
 }}
 .footer {{
-  margin-top: 2.5rem; padding-top: 0.75rem; border-top: 1px solid {BORDER};
+  margin-top: var(--space-3xl); padding-top: var(--space-lg);
+  border-top: 1px solid {BORDER};
   color: {MUTED_INK}; font-family: 'Fira Code', monospace; font-size: 0.78rem;
 }}
+/* CARDS - MASTER.md §Cards: 12px radius, shadow-md, and a 2px lift on hover. They are all
+   the same height whatever the number inside, because a row of cards with ragged bottoms is
+   the first thing that reads as unfinished. */
 .kpi {{
-  background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px;
-  padding: 14px 16px;
-  transition: transform .18s ease, box-shadow .18s ease;
+  background: {SURFACE};
+  border: 1px solid {BORDER};
+  border-radius: var(--radius-card);
+  padding: var(--space-xl) var(--space-2xl);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--ease), box-shadow var(--ease);
+  height: 100%;
+  display: flex; flex-direction: column; justify-content: center; gap: var(--space-sm);
 }}
-.kpi:hover {{ transform: translateY(-2px); box-shadow: 0 6px 18px rgba(30, 64, 175, 0.10); }}
-.kpi-value {{ font-family: 'Fira Code', monospace; font-size: 1.6rem; color: {PRIMARY}; }}
-.kpi-label {{ color: {MUTED_INK}; font-size: 0.8rem; }}
+.kpi:hover {{ transform: translateY(-2px); box-shadow: var(--shadow-lg); }}
+.kpi-value {{
+  font-family: 'Fira Code', monospace; font-size: 1.75rem; line-height: 1.1;
+  font-weight: 600; color: {PRIMARY};
+}}
+.kpi-label {{
+  color: {MUTED_INK}; font-size: 0.78rem; letter-spacing: 0.02em;
+}}
+/* Stretch each column so the cards in a row share one height. */
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{ display: flex; }}
+[data-testid="stHorizontalBlock"] > [data-testid="stColumn"] > div {{ width: 100%; }}
 
 /* A small caps rule between bands of the page. The data-dense dashboard pattern asks for
    several widgets per screen with minimal padding; without a label per band that reads as
@@ -142,7 +234,8 @@ h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }
 .section {{
   font-family: 'Fira Code', monospace; font-size: 0.72rem; letter-spacing: 0.08em;
   text-transform: uppercase; color: {MUTED_INK};
-  margin: 1.6rem 0 0.6rem; padding-bottom: 0.35rem; border-bottom: 1px solid {BORDER};
+  margin: var(--space-3xl) 0 var(--space-lg); padding-bottom: var(--space-md);
+  border-bottom: 1px solid {BORDER};
 }}
 
 /* Density. Streamlit's defaults are built for a wide marketing page; a dashboard wants the
@@ -153,7 +246,7 @@ h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }
 /* NOT a global gap override. Setting `gap` on every stVerticalBlock collapses the spacing
    Streamlit uses to separate a column row from whatever follows it, and the chart ended up
    drawn on top of the KPI cards. Density belongs on the elements this page owns. */
-.kpi {{ margin-bottom: 0.4rem; }}
+[data-testid="stHorizontalBlock"]:has(.kpi) {{ margin-bottom: var(--space-2xl); }}
 </style>
 """
 
@@ -361,12 +454,14 @@ def page_rank_leads(base_url: str, max_batch: int) -> None:
                 "blanks and `Select` are treated as missing, exactly as in training."
             )
         with right:
+            # Not stretched across the column. A button sized to its own label sits on the
+            # same baseline as the text beside it; one stretched to the full column width
+            # does not, and reads as a banner rather than a control.
             st.download_button(
                 "Download a 25-row sample",
                 data=client.sample_csv(),
                 file_name="sample_leads.csv",
                 mime="text/csv",
-                width='stretch',
             )
         st.caption(
             "The sample is synthetic. It carries the shapes the pipeline handles - blanks, "
