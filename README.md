@@ -130,11 +130,20 @@ python -m venv .venv
 .venv/Scripts/python -m uvicorn leadscore.api.main:app --port 8000
 #    interactive docs  http://localhost:8000/docs
 
-# 6. both services in containers                                    [from Phase 6]
+# 6. serve the dashboard, in a SECOND terminal                      [from Phase 6]
+#    the API from step 5 must still be running: the dashboard is a client of it
+.venv/Scripts/python -m streamlit run dashboard/app.py
+#    dashboard  http://localhost:8501
+
+# 7. or both at once, in containers                                 [from Phase 6]
 docker compose up
 #    API       http://localhost:8000/docs
 #    Dashboard http://localhost:8501
 ```
+
+Steps 5 and 6 are two terminals, not two commands in one. The dashboard talks to the API over
+HTTP and shows a plain "service not responding" screen if it is not up, which is deliberate —
+it is a demo surface for the pipeline, not a second copy of it.
 
 ### Scoring a lead
 

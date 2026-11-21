@@ -69,6 +69,11 @@ COPY --from=build /opt/venv /opt/venv
 
 WORKDIR /app
 COPY --chown=leadscore:leadscore dashboard/ ./dashboard/
+# The pinned Streamlit theme travels with the image. Without it the deployed demo
+# takes its text colour from each viewer's own dark-mode setting, which is how the
+# page became unreadable locally (D-035) - and a reviewer opening the public URL on a
+# dark-mode laptop is exactly the case that must not break.
+COPY --chown=leadscore:leadscore .streamlit/ ./.streamlit/
 COPY --chown=leadscore:leadscore docker/entrypoint.sh ./entrypoint.sh
 COPY --chown=leadscore:leadscore reports/figures/ ./reports/figures/
 

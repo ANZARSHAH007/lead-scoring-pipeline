@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS predictions (
     request_id      TEXT,
     scored_at       TEXT    NOT NULL,
     model_version   TEXT    NOT NULL,
-    score           INTEGER NOT NULL,
-    probability     REAL    NOT NULL,
-    grade           TEXT    NOT NULL,
+    score           INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
+    probability     REAL    NOT NULL CHECK (probability BETWEEN 0 AND 1),
+    grade           TEXT    NOT NULL CHECK (grade IN ('A','B','C')),
     reasons_json    TEXT    NOT NULL,
     input_json      TEXT    NOT NULL,
     latency_ms      REAL    NOT NULL
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     prediction_id   INTEGER NOT NULL REFERENCES predictions(id),
     prospect_id     TEXT    NOT NULL,
-    converted       INTEGER NOT NULL,
+    converted       INTEGER NOT NULL CHECK (converted IN (0, 1)),
     note            TEXT,
     recorded_at     TEXT    NOT NULL,
     UNIQUE (prediction_id)
@@ -94,6 +94,27 @@ class PredictionLog:
             # WAL so a reader (the dashboard) never blocks the writer (the API).
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript(SCHEMA)
+            self._warn_if_unconstrained(connection)
+
+    @staticmethod
+    def _warn_if_unconstrained(connection: sqlite3.Connection) -> None:
+        """Say so when an existing file predates the CHECK constraints (D-034).
+
+        `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, and SQLite
+        cannot add a CHECK to one afterwards - there is no `ALTER TABLE ... ADD CONSTRAINT`.
+        A log created before 2026-11-21 therefore keeps the unconstrained schema forever, and
+        would quietly offer weaker guarantees than this file claims. The log is disposable:
+        deleting the file is the whole migration.
+        """
+        row = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'predictions'"
+        ).fetchone()
+        if row is not None and "CHECK" not in (row["sql"] or ""):
+            LOGGER.warning(
+                "this prediction log predates the CHECK constraints and cannot gain them "
+                "(SQLite has no ALTER TABLE ADD CONSTRAINT). Delete the file to get a "
+                "constrained one; the log is disposable."
+            )
 
     # -- writes ------------------------------------------------------------
 
@@ -150,26 +171,38 @@ class PredictionLog:
             with self._connect() as connection:
                 written: list[int] = []
                 for row in rows:
-                    cursor = connection.execute(
-                        """
-                        INSERT INTO predictions (
-                            prospect_id, request_id, scored_at, model_version, score,
-                            probability, grade, reasons_json, input_json, latency_ms
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            row["prospect_id"],
-                            row.get("request_id"),
-                            _now(),
-                            row["model_version"],
-                            int(row["score"]),
-                            float(row["probability"]),
-                            row["grade"],
-                            json.dumps(row["reasons"], default=str),
-                            json.dumps(row["request_payload"], default=str),
-                            float(row["latency_ms"]),
-                        ),
-                    )
+                    # Per row, not per batch. Before the CHECK constraints existed (D-034) a
+                    # failure here was almost always fatal to the whole connection anyway;
+                    # now a single malformed score can be rejected on its own, and losing the
+                    # other 999 rows of logging with it would be a poor trade.
+                    try:
+                        cursor = connection.execute(
+                            """
+                            INSERT INTO predictions (
+                                prospect_id, request_id, scored_at, model_version, score,
+                                probability, grade, reasons_json, input_json, latency_ms
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                row["prospect_id"],
+                                row.get("request_id"),
+                                _now(),
+                                row["model_version"],
+                                int(row["score"]),
+                                float(row["probability"]),
+                                row["grade"],
+                                json.dumps(row["reasons"], default=str),
+                                json.dumps(row["request_payload"], default=str),
+                                float(row["latency_ms"]),
+                            ),
+                        )
+                    except (sqlite3.IntegrityError, KeyError, TypeError, ValueError) as error:
+                        LOGGER.error(
+                            "prediction log rejected one row of a batch (%s): %s",
+                            row.get("prospect_id", "<no prospect_id>"),
+                            error,
+                        )
+                        continue
                     written.append(int(cursor.lastrowid or 0))
                 return written
         except sqlite3.Error as error:

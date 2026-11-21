@@ -623,6 +623,132 @@ The artifact upload is now `if: always()`. The card is most worth having on the 
 something disagreed, and an artifact that only appears when everything passed cannot help
 diagnose anything.
 
+### D-034 - The prediction log enforces its own constraints, and still never fails a response
+
+**Date** 2026-11-21 - **Status** accepted
+
+docs/06 had specified four `CHECK` constraints on the prediction log since Phase 0, and
+`store.py` shipped with none of them. T-703 found the gap while reconciling the two; it was
+raised as OQ-13 rather than quietly deleted from the doc, because the doc was right.
+
+They are now implemented: `score` between 0 and 100, `probability` between 0 and 1, `grade`
+in `('A','B','C')`, `converted` in `(0,1)`.
+
+The interesting part is not the constraints, it is the tension they create. The log write
+happens on the request path. A constraint violation that propagated would mean a caller
+loses their score because the *audit trail* objected - exactly backwards. So the rule from
+docs/07 is now load-bearing rather than incidental: **a failed log write returns `None` and
+is never raised.** `log_prediction` already caught `sqlite3.Error`, and `IntegrityError` is a
+subclass of it, so the guarantee held the moment the constraints went in; the test suite now
+pins it instead of leaving it to inheritance.
+
+Two things did have to change:
+
+* **`log_batch` guards row by row**, not once around the whole loop. Before the constraints,
+  a write error was almost always fatal to the connection anyway; now a single malformed
+  score is a recoverable, local event, and discarding 999 good rows of logging with it would
+  be a poor trade.
+* **An older log file announces itself.** SQLite has no `ALTER TABLE ... ADD CONSTRAINT`, and
+  `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so a log created
+  before today keeps the unconstrained schema forever. `PredictionLog` checks `sqlite_master`
+  on open and warns. The log is git-ignored and disposable - deleting the file is the whole
+  migration - but silently offering weaker guarantees than the docs claim is the failure
+  mode this project keeps trying to design out.
+
+Verified by seven tests: four impossible rows refused, a refused row returning `None` rather
+than raising, one bad row in a batch costing one row, a legacy file warning, and - the one
+that states the policy - **a `/score` request still returning 200 when the log cannot write
+at all.**
+
+### D-035 - A light theme with no pinned theme is a dark-mode bug waiting to happen
+
+**Date** 2026-11-21 - **Status** accepted
+
+The owner opened the dashboard and could barely read it. The page rendered: sidebar, cards,
+buttons, all present - and the body text was invisible.
+
+The cause is a split between two sources of colour. The stylesheet painted a light surface,
+because docs/08 and the design system specify a light theme: `#F8FAFC` page, `#FFFFFF` cards.
+It never stated a **text** colour, so text fell back to Streamlit's own theme - which
+resolves from the viewer's operating system. On a dark-mode machine Streamlit supplied
+near-white text, and near-white text on a near-white background is a page that technically
+works and cannot be read. Nothing in the test suite could see it: `AppTest` checks that
+elements render, not that they contrast.
+
+**The fix is at the source, not on top of it.** `.streamlit/config.toml` pins the theme to
+the docs/08 palette, so Streamlit's own generated colours and the stylesheet agree by
+construction rather than by luck. The stylesheet now also states its text colours explicitly,
+as a second layer for the case where the app runs without that file, and the Dockerfile
+copies `.streamlit/` into the image - a reviewer opening the public demo on a dark-mode
+laptop is precisely the case that must not break.
+
+**A second bug fell out of looking.** The grade chips were green, brown and grey. docs/08
+specifies blue, amber and muted, and it argues the case rather than just stating it: grade A
+is **not** "success green", because the lead is *likely, not won*, and C is **never red**,
+because a C lead is *deprioritised, not an error*. The code had quietly overruled the one
+design decision the document bothered to justify. Chips now carry their own foreground colour
+too, since a background without a matching foreground is the same class of bug as the one
+above.
+
+Icons and motion were added in the same pass, on the owner's request, under the constraints
+already in docs/08: every page is still named in words so no icon carries meaning alone
+(WCAG 1.4.1), and all animation is a single 0.28s entrance plus a hover lift, wrapped in
+`prefers-reduced-motion`.
+
+**The icons are Material Symbols, not emoji** - a correction made mid-pass, after the UI
+guidance named emoji-as-icons an anti-pattern and the owner said the same thing in plainer
+words. The reason holds up: an emoji is a font-dependent picture of a thing, sized and
+coloured by the viewer's platform rather than by this design system, so it renders
+differently on every machine - the same class of problem as the theme bug above, where the
+viewer's environment decided what the page looked like. A Material Symbol inherits the
+surrounding text colour and weight, and Streamlit ships the font itself, so there is no CDN
+and no new dependency. Three tests hold the line: no emoji in `dashboard/`, every icon name
+checked against Streamlit's bundled set (a misspelt one renders as literal
+`:material/whatever:` text), and every page still named in words.
+
+Seven tests now cover what no screenshot would have caught twice: the theme is pinned, the
+stylesheet states a colour rather than inheriting one, the grade backgrounds are the
+documented ones, no grade is red, every chip sets a foreground, and reduced motion is
+honoured.
+
+### D-036 - The landing state is a dashboard, not a prompt
+
+**Date** 2026-11-21 - **Status** accepted
+
+With the contrast bug fixed (D-035) the page was readable, and the owner's reaction to it was
+still correct: it did not look like a dashboard. The reason was structural rather than
+decorative. **Rank leads** opened with a title, a caption, an upload box and two paragraphs
+about the upload box. Everything on the first screen was an instruction. Nothing on it was
+data. That is the first thing anyone opening the public demo link will see, and it says
+nothing about whether the model is worth using.
+
+The UI guidance names the pattern this page should be following - *Data-Dense Dashboard*:
+"multiple charts/widgets, KPI cards, minimal padding, maximum data visibility". Usefully, the
+same lookup returned the palette and type pairing already in docs/08, which means the design
+system was never the problem. The composition was.
+
+The landing state now carries, above the uploader:
+
+* **four KPI cards** - capture @ top 20%, ROC-AUC, Brier, the grade A cut-off;
+* **the comparison chart** - this model against every baseline `/model-info` reports, on the
+  headline metric. One bar is a number; the comparison is the project's actual claim, and it
+  is the one chart that makes the 44.1% mean something.
+
+Both read from `/model-info`, which reads the model card, so every figure moves when the
+model does and none of it is typed into the UI - the same rule the README's generated blocks
+follow (T-407).
+
+Details worth keeping: the shipping bar is the only one in the primary colour *and* the only
+one labelled "This model", so colour is never the sole encoding; values are written at the
+end of each bar rather than left to a gridline, per docs/08; a baseline missing the headline
+metric is dropped rather than plotted as zero, because a missing number is not a zero and
+plotting it would invent a comparison. `capture_frame()` is separated from the chart so that
+rule is testable without rendering anything.
+
+Six tests cover the new state, including the two that state the intent: the landing screen
+shows the model's numbers before asking for a file, and the chart always has something to
+compare against.
+
 ### Next decision
 ---
 

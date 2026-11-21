@@ -10,14 +10,17 @@ readable sentence rather than a traceback.
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 
 import pandas as pd
 import pytest
 import requests
-from dashboard import client
+from dashboard import app, client
 
 from leadscore.api import schemas as sc
+
+ROOT = Path(__file__).resolve().parents[1]
 
 GOOD_CSV = (
     "prospect_id,lead_origin,total_time_spent_on_website,total_visits,city\n"
@@ -340,18 +343,58 @@ def test_every_page_renders_without_raising(app_test, stub_api, page) -> None:
     assert not app_test.exception, app_test.exception
     app_test.sidebar.radio[0].set_value(page).run()
     assert not app_test.exception, app_test.exception
-    assert [element.value for element in app_test.title] == [page]
+    titles = [element.value for element in app_test.title]
+    assert len(titles) == 1, titles
+    # the heading carries a decorative icon in front of the name (D-035); the name is
+    # what must be there, and what a screen reader announces after the glyph.
+    assert titles[0].endswith(page), titles
     assert not app_test.error
 
 
 def test_rank_leads_opens_on_the_empty_state(app_test, stub_api) -> None:
-    """docs/04: the empty state explains what to upload and offers a sample."""
+    """docs/04: the landing state explains what to upload and offers a sample."""
     app_test.run()
     assert not app_test.exception
-    info = " ".join(str(element.value) for element in app_test.info)
-    assert "Required columns" in info
+    drawn = " ".join(str(element.value) for element in app_test.markdown)
+    assert "Required columns" in drawn
     for column in client.REQUIRED_COLUMNS:
-        assert column in info
+        assert column in drawn
+
+
+def test_the_landing_state_shows_the_model_before_asking_for_a_file(app_test, stub_api) -> None:
+    """A page whose only content is "upload a file" says nothing about the model (D-036).
+
+    This is the first screen anyone opening the demo link sees, so it carries the numbers
+    that decide whether the thing is worth using - read from `/model-info`, never typed in.
+    """
+    app_test.run()
+    assert not app_test.exception
+    drawn = " ".join(str(element.value) for element in app_test.markdown)
+    assert "44.1%" in drawn, "the headline capture@20% is missing from the landing state"
+    assert "0.865" in drawn, "ROC-AUC is missing"
+    assert "76" in drawn, "the grade A cut-off is missing"
+
+
+def test_the_landing_chart_compares_the_model_with_its_baselines(app_test, stub_api) -> None:
+    """One bar is a number; the point of the chart is what the model had to beat."""
+    frame = app.capture_frame(FAKE_INFO)
+    assert len(frame) >= 2, "a chart with nothing to compare against would be decoration"
+    assert frame["shipping"].sum() == 1, "exactly one row is the shipping model"
+    shipping = frame[frame["shipping"]].iloc[0]
+    assert shipping["approach"] == "This model"
+    assert shipping["capture"] > frame[~frame["shipping"]]["capture"].max()
+
+
+def test_a_baseline_without_the_headline_metric_is_left_out_rather_than_plotted_as_zero(
+) -> None:
+    """A missing number is not a zero. Plotting it as one would invent a comparison."""
+    frame = app.capture_frame(
+        {
+            "metrics": {"capture_at_20": 0.441},
+            "baselines": {"one_rule": {"roc_auc": 0.646}, "random": {"capture_at_20": 0.2}},
+        }
+    )
+    assert set(frame["approach"]) == {"This model", "Random order"}
 
 
 def test_submitting_the_form_shows_a_score_and_three_reasons(app_test, stub_api) -> None:
@@ -401,3 +444,82 @@ def test_the_footer_names_the_model_on_every_page(app_test, stub_api) -> None:
         app_test.sidebar.radio[0].set_value(page).run()
         drawn = " ".join(str(element.value) for element in app_test.markdown)
         assert "stub-1" in drawn, f"{page} does not name the model"
+
+
+# ---------------------------------------------------------------------------
+# the theme (D-035)
+#
+# The dashboard shipped with a light palette and no pinned theme, so Streamlit supplied the
+# text colour from the viewer's own preference. On a dark-mode machine that produced
+# near-white text on the near-white background the CSS forced: the page rendered, and almost
+# none of it could be read. These tests pin the two halves of the fix.
+# ---------------------------------------------------------------------------
+
+
+def test_the_streamlit_theme_is_pinned_to_the_design_systems_palette() -> None:
+    """Without this file the viewer's OS decides the text colour. It must not."""
+    config = (ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8")
+    assert 'base = "light"' in config, "the design system is a light theme (docs/08)"
+    for value in ("#1E40AF", "#F8FAFC", "#FFFFFF"):
+        assert value in config, f"{value} from docs/08 is missing from the pinned theme"
+    assert "textColor" in config, "an unset text colour is the whole bug this file fixes"
+
+
+def test_the_stylesheet_states_a_text_colour_rather_than_inheriting_one() -> None:
+    """Second layer: correct even if the app is run without the config file."""
+    assert f"color: {app.BODY_INK}" in app.STYLE
+
+
+@pytest.mark.parametrize(("grade", "expected"), [("A", "#1E40AF"), ("B", "#D97706")])
+def test_grade_colours_are_the_ones_docs_08_argues_for(grade: str, expected: str) -> None:
+    """docs/08 makes a case: A is not "success green" - the lead is likely, not won."""
+    background, _ = app.GRADE_STYLE[grade]
+    assert background == expected
+
+
+def test_no_grade_is_red_because_a_c_lead_is_not_an_error() -> None:
+    reds = {"#DC2626", "#B91C1C", "#EF4444"}
+    assert not {background for background, _ in app.GRADE_STYLE.values()} & reds
+
+
+def test_every_grade_chip_carries_its_own_foreground_colour() -> None:
+    for grade in app.GRADE_STYLE:
+        chip = app._grade_chip(grade)
+        assert "color:" in chip, f"grade {grade}'s chip would inherit its text colour"
+        assert grade in chip, "the letter is the grade's non-colour encoding (WCAG 1.4.1)"
+
+
+def test_motion_is_disabled_for_viewers_who_ask_for_that() -> None:
+    assert "prefers-reduced-motion" in app.STYLE
+
+
+def test_the_dashboard_uses_material_symbols_and_no_emoji() -> None:
+    """Icons are Material Symbols, which Streamlit renders from its own bundled font.
+
+    Not emoji: an emoji is a font-dependent picture, sized and coloured by the viewer's
+    platform rather than by this design system, and it renders differently on every machine.
+    A Material Symbol inherits the surrounding text colour and weight, so the icons stay one
+    visual family — which is the rule the UI guidance states as "SVG icons, never emoji".
+    """
+    emoji = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]")
+    for name in ("app.py", "client.py"):
+        source = (ROOT / "dashboard" / name).read_text(encoding="utf-8")
+        found = emoji.findall(source)
+        assert not found, f"dashboard/{name} contains emoji: {found}"
+
+
+def test_every_page_icon_is_a_real_material_symbol() -> None:
+    """A misspelt name renders as the literal text ':material/whatever:' on the page."""
+    from streamlit.material_icon_names import ALL_MATERIAL_ICONS
+
+    available = set(ALL_MATERIAL_ICONS)
+    for page, directive in app.PAGE_ICONS.items():
+        assert directive.startswith(":material/") and directive.endswith(":"), (page, directive)
+        assert directive[len(":material/") : -1] in available, (
+            f"{page!r} uses {directive}, which is not in Streamlit's bundled icon set"
+        )
+
+
+def test_every_page_is_named_in_words_not_only_by_its_icon() -> None:
+    """The icon is decoration. Remove it and the nav must still say what each page is."""
+    assert set(app.PAGE_ICONS) == set(app.PAGES)

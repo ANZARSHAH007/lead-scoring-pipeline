@@ -1,0 +1,34 @@
+# Streamlit theme, pinned (task T-601, D-035).
+#
+# WHY THIS FILE EXISTS: the dashboard's CSS paints a light surface — `#F8FAFC` page,
+# `#FFFFFF` cards — because docs/08 and the design system specify a light theme. It did not
+# set a text colour, so text fell back to whatever Streamlit's own theme supplied. On a
+# machine whose Streamlit resolved to dark mode, that meant near-white text on a near-white
+# background: the page rendered, and almost none of it could be read.
+#
+# Pinning the theme fixes it at the source rather than by piling `color:` rules on top of
+# Streamlit's. The app now looks the same for every viewer regardless of their OS setting,
+# which is also what a demo link needs: a reviewer opening it on a dark-mode laptop must see
+# what was designed, not a half-legible variant of it.
+#
+# These values are docs/08 §Colour and design-system/lead-scoring-pipeline/MASTER.md. Change
+# them in all three or in none.
+
+[theme]
+base = "light"
+
+primaryColor = "#1E40AF"             # Primary — headings, focus ring, grade A
+backgroundColor = "#F8FAFC"          # Background — the page
+secondaryBackgroundColor = "#FFFFFF" # Card — panels, sidebar, table surface
+textColor = "#0F172A"                # body copy: darker than the #1E3A8A heading ink, for
+                                     # long-form legibility (≈ 16.8:1 on the page background)
+linkColor = "#1E40AF"
+
+font = "sans-serif"
+
+[server]
+# The dashboard is a demo surface. Nothing it receives should be sent anywhere but the API.
+gatherUsageStats = false
+
+[browser]
+gatherUsageStats = false

@@ -60,6 +60,8 @@ Retraining is never automatic in P1. The loop exists so the capstone can close i
 
 ## Surface flow 1 — Rank leads (the main journey)
 
+**The landing state shows the model before it asks for anything (D-036):** four KPI cards and the baseline comparison chart, both read from `/model-info`. The uploader sits below them. A first screen made entirely of instructions tells a visitor nothing about the model they are being asked to trust, and this is the screen a demo link opens on.
+
 1. Rep opens the dashboard, lands on **Rank leads**.
 2. Empty state explains what to upload and offers a sample CSV.
 3. Rep uploads a CSV.

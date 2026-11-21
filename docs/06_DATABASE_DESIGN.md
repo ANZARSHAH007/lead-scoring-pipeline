@@ -63,9 +63,9 @@ CREATE TABLE IF NOT EXISTS predictions (
     request_id      TEXT,                          -- groups a batch call together
     scored_at       TEXT    NOT NULL,              -- ISO 8601, UTC, milliseconds
     model_version   TEXT    NOT NULL,              -- e.g. 20261118-6ae06cc8
-    score           INTEGER NOT NULL,
-    probability     REAL    NOT NULL,
-    grade           TEXT    NOT NULL,
+    score           INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
+    probability     REAL    NOT NULL CHECK (probability BETWEEN 0 AND 1),
+    grade           TEXT    NOT NULL CHECK (grade IN ('A','B','C')),
     reasons_json    TEXT    NOT NULL,              -- the 3 reasons as returned
     input_json      TEXT    NOT NULL,              -- the validated request payload
     latency_ms      REAL    NOT NULL
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     prediction_id   INTEGER NOT NULL REFERENCES predictions(id),
     prospect_id     TEXT    NOT NULL,
-    converted       INTEGER NOT NULL,
+    converted       INTEGER NOT NULL CHECK (converted IN (0, 1)),
     note            TEXT,
     recorded_at     TEXT    NOT NULL,              -- ISO 8601, UTC, milliseconds
     UNIQUE (prediction_id)
@@ -108,10 +108,19 @@ Design notes, with reasons:
   - The **`model_version` index was never created**, and `request_id` got one instead. The
     index that exists matches what the code actually queries by; the one that does not is
     worth adding the first time two model versions are live at once.
-  - **The four `CHECK` constraints were never written.** This is the one real loss: `score`
-    between 0 and 100, `probability` between 0 and 1, `grade` in `('A','B','C')`, `converted`
-    in `(0,1)`. The API validates all four before it writes, so nothing invalid reaches the
-    table today — but that is defence in one layer rather than two. **Open: OQ-13.**
+  - **The four `CHECK` constraints were never written** — found by T-703, and now
+    **implemented** (OQ-13, D-034): `score` between 0 and 100, `probability` between 0 and 1,
+    `grade` in `('A','B','C')`, `converted` in `(0,1)`. The API already validated all four
+    before writing, so this is a second layer rather than a first: it covers the doors the
+    API does not stand in front of — a future model with an off-by-one score, a migration, a
+    direct `sqlite3` session. The log write is wrapped so a rejected row is logged and
+    returns `None`, never raised: **a caller must never lose a score because the audit trail
+    objected.** A batch is guarded row by row, so one bad row costs one row rather than the
+    other 999.
+- **A log file older than 2026-11-21 cannot gain the constraints.** SQLite has no
+  `ALTER TABLE ... ADD CONSTRAINT`, and `CREATE TABLE IF NOT EXISTS` does nothing to a table
+  that exists. `PredictionLog` detects this and logs a warning rather than pretending; the
+  log is disposable, so deleting the file is the entire migration.
 - **Timestamps are ISO 8601 UTC strings.** SQLite has no datetime type; text in a fixed format sorts correctly and is unambiguous across machines. See OQ-6 on display timezone.
 - **`UNIQUE (prospect_id, prediction_id)`** stops the same outcome being reported twice and double-counting in live accuracy.
 - **Latency stored per request** so NFR-1's p95 is measured from real traffic, not a benchmark.

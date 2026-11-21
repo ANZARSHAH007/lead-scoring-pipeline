@@ -21,6 +21,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -39,30 +40,88 @@ from leadscore import config as cfg  # noqa: E402
 from leadscore.api import schemas as sc  # noqa: E402
 
 PRIMARY = "#1E40AF"
+SECONDARY = "#3B82F6"
 ACCENT = "#D97706"
-INK = "#1E3A8A"
+INK = "#1E3A8A"          # headings, per docs/08 "Foreground"
+BODY_INK = "#0F172A"     # body copy: darker than INK, for paragraphs rather than headings
 MUTED_INK = "#475569"
 SURFACE = "#FFFFFF"
+MUTED = "#E9EEF6"
 BACKGROUND = "#F8FAFC"
 BORDER = "#DBEAFE"
 
-GRADE_COLOURS = {"A": "#15803D", "B": "#B45309", "C": "#64748B"}
+#: Background and foreground per grade, straight from docs/08 §Grade chips. Both halves
+#: matter: a chip that sets a background without a matching text colour is how contrast
+#: regressions happen.
+#:
+#: These used to be green/brown/grey, which contradicted the design system in the one place
+#: it argues a case: grade A is *not* "success green", because the lead is **likely, not
+#: won**, and C is never red, because a C lead is **deprioritised, not an error** (D-035).
+GRADE_STYLE = {
+    "A": (PRIMARY, "#FFFFFF"),
+    "B": (ACCENT, "#000000"),
+    "C": (MUTED, MUTED_INK),
+}
 
 PAGES = ("Rank leads", "Try one lead", "Model card")
+
+#: One icon per page, drawn from Material Symbols - the icon family Streamlit already ships
+#: and renders from its own bundled font, so there is no CDN, no extra dependency and no
+#: glyph that renders differently on someone else's machine.
+#:
+#: NOT emoji. An emoji is a font-dependent picture of a thing, sized and coloured by the
+#: platform rather than by this design system; Material Symbols inherit the surrounding text
+#: colour and weight and stay one visual family across every surface.
+#:
+#: Each icon is decorative: every page is still named in words beside it, so nothing is
+#: conveyed by the glyph alone and a screen reader loses nothing by skipping it.
+PAGE_ICONS = {
+    "Rank leads": ":material/leaderboard:",
+    "Try one lead": ":material/person_search:",
+    "Model card": ":material/fact_check:",
+}
 
 STYLE = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
 html, body, [class*="css"] {{ font-family: 'Fira Sans', 'Segoe UI', sans-serif; }}
 h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }}
-.stApp {{ background: {BACKGROUND}; }}
+
+/* Text colour is stated, never inherited. This page is light by design (docs/08), and the
+   CSS used to set a light background while leaving the text to Streamlit's own theme. On a
+   viewer whose Streamlit resolved to dark mode that produced near-white text on a near-white
+   background - the page rendered and could not be read (D-035). `.streamlit/config.toml`
+   pins the theme so this cannot recur; these rules are the second layer, for the case where
+   the app runs without that file. */
+.stApp {{ background: {BACKGROUND}; color: {BODY_INK}; }}
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] td,
+.stApp label, .stApp .stRadio label {{ color: {BODY_INK}; }}
+[data-testid="stCaptionContainer"], .stApp small {{ color: {MUTED_INK}; }}
+.stApp a {{ color: {PRIMARY}; }}
+
 .grade-chip {{
   display: inline-block; padding: 2px 10px; border-radius: 999px;
-  font-weight: 600; font-size: 0.85rem; color: #FFFFFF;
+  font-weight: 600; font-size: 0.85rem;
+  transition: transform .15s ease;
 }}
+.grade-chip:hover {{ transform: scale(1.06); }}
 .reason {{
   border-left: 3px solid {ACCENT}; padding: 2px 0 2px 10px; margin: 6px 0;
-  color: {INK};
+  color: {BODY_INK};
+}}
+
+/* Motion is decoration, so it is small, fast and skippable. Cards rise 6px once on arrival
+   and lift on hover; nothing loops, nothing moves while being read. The reduced-motion query
+   is not optional politeness - it is the same accessibility floor as the grade letters. */
+@keyframes rise {{
+  from {{ opacity: 0; transform: translateY(6px); }}
+  to   {{ opacity: 1; transform: none; }}
+}}
+.kpi, .reason {{ animation: rise .28s ease-out both; }}
+@media (prefers-reduced-motion: reduce) {{
+  .kpi, .reason, .grade-chip {{ animation: none; transition: none; }}
 }}
 .footer {{
   margin-top: 2.5rem; padding-top: 0.75rem; border-top: 1px solid {BORDER};
@@ -71,9 +130,26 @@ h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }
 .kpi {{
   background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px;
   padding: 14px 16px;
+  transition: transform .18s ease, box-shadow .18s ease;
 }}
+.kpi:hover {{ transform: translateY(-2px); box-shadow: 0 6px 18px rgba(30, 64, 175, 0.10); }}
 .kpi-value {{ font-family: 'Fira Code', monospace; font-size: 1.6rem; color: {PRIMARY}; }}
 .kpi-label {{ color: {MUTED_INK}; font-size: 0.8rem; }}
+
+/* A small caps rule between bands of the page. The data-dense dashboard pattern asks for
+   several widgets per screen with minimal padding; without a label per band that reads as
+   clutter rather than structure. */
+.section {{
+  font-family: 'Fira Code', monospace; font-size: 0.72rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: {MUTED_INK};
+  margin: 1.6rem 0 0.6rem; padding-bottom: 0.35rem; border-bottom: 1px solid {BORDER};
+}}
+
+/* Density. Streamlit's defaults are built for a wide marketing page; a dashboard wants the
+   first row of data above the fold rather than below a screenful of padding. */
+.block-container {{ padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1180px; }}
+[data-testid="stMetricValue"] {{ font-family: 'Fira Code', monospace; }}
+[data-testid="stVerticalBlock"] {{ gap: 0.6rem; }}
 </style>
 """
 
@@ -93,15 +169,125 @@ def _model_info(base_url: str) -> dict:
     return client.model_info(base_url)
 
 
+def _title(name: str) -> None:
+    """A page heading with its icon in front of it.
+
+    `st.title`, not a raw `<h1>` in markdown: the raw version looks identical and throws away
+    the real heading element, which is what the page's structure, its anchor link and the
+    render tests all read. The icon is decoration - the page is still named in words, so
+    nothing depends on the glyph rendering (WCAG 1.4.1).
+    """
+    st.title(f"{PAGE_ICONS.get(name, '')} {name}".strip())
+
+
 def _grade_chip(grade: str) -> str:
-    colour = GRADE_COLOURS.get(grade, MUTED_INK)
-    return f'<span class="grade-chip" style="background:{colour}">{grade}</span>'
+    """One grade's chip: its background and its text colour, never one without the other.
+
+    A chip that sets a background and leaves the foreground to inherit is exactly how the
+    page became unreadable in the first place (D-035).
+    """
+    background, foreground = GRADE_STYLE.get(grade, (MUTED, MUTED_INK))
+    return (
+        f'<span class="grade-chip" style="background:{background};color:{foreground}">'
+        f"{grade}</span>"
+    )
 
 
 def _kpi(label: str, value: str) -> str:
     return (
         f'<div class="kpi"><div class="kpi-value">{value}</div>'
         f'<div class="kpi-label">{label}</div></div>'
+    )
+
+
+def _headline(info: dict) -> None:
+    """The four numbers that say whether this model is worth anything, shown on arrival.
+
+    A page whose whole content is "upload a file" tells a visitor nothing about the thing
+    they are being asked to use. These come from `/model-info`, which reads the model card,
+    so they move when the model does and are never typed into the UI.
+    """
+    metrics = info.get("metrics") or {}
+    bands = info.get("grade_bands") or {}
+    cells = (
+        ("capture @ top 20%", f"{metrics.get('capture_at_20', 0):.1%}"),
+        ("ROC-AUC", f"{metrics.get('roc_auc', 0):.3f}"),
+        ("Brier - lower is better", f"{metrics.get('brier', 0):.3f}"),
+        ("grade A from", str((bands.get("A") or {}).get("min_score", "-"))),
+    )
+    for column, (label, value) in zip(st.columns(len(cells)), cells, strict=True):
+        with column:
+            st.markdown(_kpi(label, value), unsafe_allow_html=True)
+
+
+#: Baseline keys as `/model-info` returns them, in the words a reader needs.
+BASELINE_LABELS = {
+    "one_rule": "One rule: time on site",
+    "logistic_regression": "Logistic regression",
+    "random": "Random order",
+}
+
+
+def capture_frame(info: dict) -> pd.DataFrame:
+    """The shipping model and its baselines on the headline metric, ready to plot.
+
+    Split out from the chart so it can be tested without rendering anything.
+    """
+    metrics = info.get("metrics") or {}
+    rows = [
+        {
+            "approach": "This model",
+            "capture": float(metrics.get("capture_at_20") or 0.0),
+            "shipping": True,
+        }
+    ]
+    for key, baseline in (info.get("baselines") or {}).items():
+        value = (baseline or {}).get("capture_at_20")
+        if value is not None:
+            rows.append(
+                {
+                    "approach": BASELINE_LABELS.get(key, key.replace("_", " ")),
+                    "capture": float(value),
+                    "shipping": False,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _capture_chart(info: dict) -> None:
+    """The project's whole claim, as one chart: this model against what it has to beat.
+
+    Horizontal bars, sorted, with the value written at the end of each one - docs/08 asks
+    for value labels rather than a gridline the reader has to measure against. The shipping
+    model is the only bar in the primary colour, and it is also the only one labelled "This
+    model", so the colour is never the sole encoding (WCAG 1.4.1).
+    """
+    frame = capture_frame(info)
+    if len(frame) < 2:  # nothing to compare against; a single bar says nothing
+        return
+
+    base = alt.Chart(frame).encode(
+        y=alt.Y("approach:N", sort="-x", title=None, axis=alt.Axis(labelFontSize=13)),
+        x=alt.X(
+            "capture:Q",
+            title="share of all conversions reached by calling the top 20%",
+            axis=alt.Axis(format="%", grid=False),
+            scale=alt.Scale(domain=[0, max(0.6, float(frame["capture"].max()) * 1.25)]),
+        ),
+        tooltip=[
+            alt.Tooltip("approach:N", title="approach"),
+            alt.Tooltip("capture:Q", title="capture @ 20%", format=".1%"),
+        ],
+    )
+    bars = base.mark_bar(height=20, cornerRadiusEnd=3).encode(
+        color=alt.condition(alt.datum.shipping, alt.value(PRIMARY), alt.value("#94A3B8"))
+    )
+    labels = base.mark_text(align="left", dx=6, fontSize=13, color=BODY_INK).encode(
+        text=alt.Text("capture:Q", format=".1%")
+    )
+    st.altair_chart(
+        (bars + labels).properties(height=34 * len(frame)).configure_view(stroke=None),
+        width='stretch',
     )
 
 
@@ -131,7 +317,7 @@ def _footer(version: str | None) -> None:
 
 
 def page_rank_leads(base_url: str, max_batch: int) -> None:
-    st.title("Rank leads")
+    _title("Rank leads")
     st.caption(
         "Upload a CSV of leads. They come back sorted by score, with the three reasons "
         "behind each one."
@@ -140,21 +326,44 @@ def page_rank_leads(base_url: str, max_batch: int) -> None:
     upload = st.file_uploader("Lead CSV", type=["csv"], label_visibility="collapsed")
 
     if upload is None:
-        st.info(
-            "**Start with a CSV.** Required columns: "
-            f"`{'`, `'.join(client.REQUIRED_COLUMNS)}`. Everything else is optional - "
-            "blanks and `Select` are treated as missing, exactly as in training."
-        )
-        st.download_button(
-            "Download a 25-row sample",
-            data=client.sample_csv(),
-            file_name="sample_leads.csv",
-            mime="text/csv",
-        )
+        # The landing state is a dashboard, not a prompt. A page whose entire content is
+        # "upload a file" says nothing about the model a visitor is being asked to trust,
+        # and it is the first thing anyone opening the demo link sees (D-036).
+        try:
+            info = _model_info(base_url)
+        except client.ApiUnreachable as error:
+            _service_down(error)
+            return
+
         st.markdown(
-            "The sample is **synthetic**. It carries the shapes the pipeline handles - "
-            "blanks, `Select`, missing numbers - so no score from it means anything about a "
-            "real lead."
+            '<div class="section">Measured on held-out leads</div>',
+            unsafe_allow_html=True,
+        )
+        _headline(info)
+        _capture_chart(info)
+
+        st.markdown(
+            '<div class="section">Score your own leads</div>',
+            unsafe_allow_html=True,
+        )
+        left, right = st.columns([3, 2])
+        with left:
+            st.markdown(
+                "Required columns: "
+                f"`{'`, `'.join(client.REQUIRED_COLUMNS)}`. Everything else is optional - "
+                "blanks and `Select` are treated as missing, exactly as in training."
+            )
+        with right:
+            st.download_button(
+                "Download a 25-row sample",
+                data=client.sample_csv(),
+                file_name="sample_leads.csv",
+                mime="text/csv",
+                width='stretch',
+            )
+        st.caption(
+            "The sample is synthetic. It carries the shapes the pipeline handles - blanks, "
+            "`Select`, missing numbers - so no score from it means anything about a real lead."
         )
         return
 
@@ -261,7 +470,7 @@ MOTIVATIONS = ("Select", "Better Career Prospects", "Flexibility & Convenience",
 
 
 def page_try_one_lead(base_url: str) -> None:
-    st.title("Try one lead")
+    _title("Try one lead")
     st.caption(
         "Every field is one the model is allowed to see. Change one, submit again, and watch "
         "the score move - the cheapest way to see what it is reacting to."
@@ -372,7 +581,7 @@ MUST_NOT = (
 
 
 def page_model_card(base_url: str) -> None:
-    st.title("Model card")
+    _title("Model card")
     st.caption("Everything here is read from the API. No metric on this page is recomputed.")
 
     try:
@@ -502,14 +711,22 @@ def page_model_card(base_url: str) -> None:
 
 def main() -> None:
     settings = cfg.Settings()
-    st.set_page_config(page_title="Lead Scoring", page_icon="📈", layout="wide")
+    st.set_page_config(
+        page_title="Lead Scoring", page_icon=":material/query_stats:", layout="wide"
+    )
     st.markdown(STYLE, unsafe_allow_html=True)
 
     st.session_state.setdefault("base_url", settings.api_base_url)
 
     with st.sidebar:
         st.markdown("### Lead Scoring")
-        page = st.radio("Page", PAGES, index=0, label_visibility="collapsed")
+        page = st.radio(
+            "Page",
+            PAGES,
+            index=0,
+            label_visibility="collapsed",
+            format_func=lambda name: f"{PAGE_ICONS.get(name, '')}  {name}",
+        )
         st.markdown("---")
         st.session_state.base_url = st.text_input(
             "Scoring API", value=st.session_state.base_url, help="Where this demo sends requests."

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import warnings
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ from leadscore import fixtures, schema
 from leadscore import train as tr
 from leadscore.api import main as api
 from leadscore.api import schemas as sc
+from leadscore.api import store
 from leadscore.api.store import PredictionLog
 
 VALID_LEAD: dict[str, Any] = {
@@ -467,3 +469,99 @@ def test_single_score_latency_is_within_the_target(client) -> None:
     p95 = PredictionLog(settings=client.app.state.settings).latency_percentile(0.95)
     assert p95 is not None
     assert p95 < 300, f"p95 latency {p95:.1f} ms exceeds the 300 ms target"
+
+
+# ---------------------------------------------------------------------------
+# the prediction log's CHECK constraints (OQ-13, D-034)
+#
+# The schema promised four of these from Phase 0 and shipped with none of them; T-703 found
+# the gap. They are defence in a second layer: the API validates every field before it
+# writes, so nothing invalid reaches the table through the front door. These tests cover the
+# other doors - a future model with an off-by-one score, a migration, someone with sqlite3
+# and good intentions - and, more importantly, pin the rule that a rejected *log* row must
+# never cost the caller their *score*.
+# ---------------------------------------------------------------------------
+
+
+def _valid_row(**overrides: object) -> dict:
+    row = {
+        "prospect_id": "constraint-test",
+        "model_version": "test",
+        "score": 50,
+        "probability": 0.5,
+        "grade": "B",
+        "reasons": [],
+        "request_payload": {},
+        "latency_ms": 1.0,
+    }
+    row.update(overrides)
+    return row
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("score", 137),       # outside 0-100
+        ("score", -1),
+        ("probability", 1.5),  # outside 0-1
+        ("grade", "F"),        # not a real grade
+    ],
+)
+def test_the_log_refuses_an_impossible_row(tmp_path: Path, field: str, bad_value: object) -> None:
+    log = PredictionLog(path=tmp_path / "constrained.db")
+    assert log.log_prediction(**_valid_row(**{field: bad_value})) is None
+    assert log.count() == 0, f"a row with {field}={bad_value!r} reached the table"
+
+
+def test_a_refused_row_returns_none_rather_than_raising(tmp_path: Path) -> None:
+    """The rule the whole design turns on: bookkeeping never breaks the product."""
+    log = PredictionLog(path=tmp_path / "constrained.db")
+    assert log.log_prediction(**_valid_row(score=500)) is None  # must not raise
+    assert log.log_prediction(**_valid_row(score=50)) == 1, "the log still works afterwards"
+
+
+def test_one_bad_row_does_not_discard_the_rest_of_a_batch(tmp_path: Path) -> None:
+    log = PredictionLog(path=tmp_path / "constrained.db")
+    written = log.log_batch(
+        [_valid_row(prospect_id="a"), _valid_row(prospect_id="b", score=9999), _valid_row(prospect_id="c")]
+    )
+    assert len(written) == 2, "the two valid rows should survive the one invalid row"
+    assert log.count() == 2
+
+
+def test_a_valid_row_is_unaffected_by_the_constraints(tmp_path: Path) -> None:
+    log = PredictionLog(path=tmp_path / "constrained.db")
+    for score, grade in ((0, "C"), (100, "A"), (76, "A")):
+        assert log.log_prediction(**_valid_row(score=score, grade=grade)) is not None
+    assert log.count() == 3
+
+
+def test_a_legacy_log_without_constraints_is_reported_not_silently_accepted(
+    tmp_path: Path, caplog
+) -> None:
+    """SQLite cannot add a CHECK to an existing table, so the old file must announce itself."""
+    path = tmp_path / "legacy.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        store.SCHEMA.replace(" CHECK (score BETWEEN 0 AND 100)", "")
+        .replace(" CHECK (probability BETWEEN 0 AND 1)", "")
+        .replace(" CHECK (grade IN ('A','B','C'))", "")
+    )
+    connection.commit()
+    connection.close()
+
+    with caplog.at_level("WARNING"):
+        PredictionLog(path=path)
+    assert any("predates the CHECK constraints" in r.message for r in caplog.records)
+
+
+def test_scoring_still_succeeds_when_the_log_cannot_write(client, monkeypatch) -> None:
+    """The end the user sees: a broken log degrades observability, not the service."""
+
+    def refuse(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(PredictionLog, "log_prediction", refuse)
+    response = client.post("/score", json={**VALID_LEAD, "prospect_id": "log-down"})
+    assert response.status_code == 200
+    assert 0 <= response.json()["score"] <= 100

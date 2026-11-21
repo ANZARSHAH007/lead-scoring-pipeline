@@ -34,6 +34,8 @@ Deliberately **not** attempted: custom component chrome, bespoke tables, animati
 | Destructive | `#DC2626` | errors only — never a grade, never a data series |
 | Ring | `#1E40AF` | focus |
 
+**This palette is pinned in `.streamlit/config.toml`, not only in the stylesheet.** A light theme that leaves the text colour to Streamlit inherits it from the viewer's operating system, and on a dark-mode machine the result was near-white text on the near-white background this table specifies (D-035). The three places these values live — this table, `design-system/lead-scoring-pipeline/MASTER.md` and `.streamlit/config.toml` — change together or not at all; `tests/test_dashboard.py` checks the third against the first.
+
 **Typography:** headings **Fira Code**, body **Fira Sans**. The monospaced heading is intentional for a data tool: it signals precision and keeps numeric column headers aligned. All numbers — scores, metrics, probabilities — render in Fira Code with tabular figures so digits line up in a dense column.
 
 **Spacing (density 8/10):** `xs 2px · sm 4px · md 8px · lg 12px · xl 16px · 2xl 24px · 3xl 32px`. Table rows use `md`; panels use `lg`; only the page container uses `3xl`. A dense table is the point — a rep scans 200 rows, so generous padding is a cost, not a courtesy.

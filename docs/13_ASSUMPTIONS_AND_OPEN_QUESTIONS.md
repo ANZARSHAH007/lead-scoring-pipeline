@@ -102,7 +102,7 @@ It needs the Kaggle token as a repo secret (A-11), in a **public** repo. GitHub 
 **Options:** (a) create it in the browser, then `git remote add` — no install; (b) install the GitHub CLI.
 **Still owner action.** The local repo is initialised and committed (`872d629`); create `lead-scoring-pipeline` as a **public** repo on GitHub, then `git remote add origin <url>` and `git push -u origin main`.
 
-### OQ-13 — Should the prediction log enforce its own `CHECK` constraints?
+### OQ-13 — ~~Should the prediction log enforce its own `CHECK` constraints?~~ **RESOLVED 2026-11-21: yes, with the write wrapped**
 docs/06 was written with four `CHECK` constraints (`score` 0–100, `probability` 0–1, `grade`
 in A/B/C, `converted` in 0/1). `store.py` never implemented them, and T-703 found the gap on
 2026-11-21.
@@ -116,8 +116,11 @@ a rejected log row is recorded and swallowed rather than raised.
 **Also note:** SQLite cannot add a `CHECK` to an existing table. Adoption means new databases
 only, or a table rebuild. The log is git-ignored and disposable, so in practice this is
 cheap now and expensive later.
-**Blocks:** nothing. **Recommendation:** add them, with the log write wrapped so a rejected
-row is logged and never raised to the caller. **Owner decision needed.**
+**Answer (owner, 2026-11-21):** add them, with the log write wrapped so a rejected row is
+logged and never raised to the caller. Implemented as D-034: four constraints, a per-row
+guard on batch writes so one bad row costs one row, and a warning when an older log file is
+opened that cannot gain them. Seven tests cover it, including the one that matters most —
+scoring still returns 200 when the log refuses to write.
 
 ### OQ-12 — Who is the "friend" for the T-701 README run-through?
 The Phase-1 gate in the roadmap requires someone else to run the repo unaided. Needs a real person named before 2026-11-29. **Owner action.**
