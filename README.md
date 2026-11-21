@@ -1,8 +1,10 @@
 # Lead Scoring Pipeline
 
+[![CI](https://github.com/ANZARSHAH007/lead-scoring-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ANZARSHAH007/lead-scoring-pipeline/actions/workflows/ci.yml)
+
 Scores a sales lead 0–100 the moment it arrives, and says why in three plain-English reasons, so a sales team calls the most likely converters first.
 
-**Status:** Phase 1 complete — foundation, config and tests in place; the pipeline itself is not built yet (as of 2026-11-13). `ruff` clean, 32 tests passing. Target delivery **2026-11-29**. Progress by task: [docs/11](docs/11_DEVELOPMENT_ROADMAP.md).
+**Status:** Phases 1–6 complete as of 2026-11-21 — data contract, leakage audit, training, calibration, evaluation, explanations, the scoring API, the dashboard, the Docker image and CI. `ruff` clean, **280 tests passing**. Every push to `main` builds the image, starts the container, scores a lead through it, then retrains on the real dataset and runs the quality gate — the badge above is that pipeline. **Not yet deployed:** there is no public URL until T-604. Target delivery **2026-11-29**. Progress by task: [docs/11](docs/11_DEVELOPMENT_ROADMAP.md).
 
 This is project P1 of a seven-project AI-engineering portfolio. The deliverable is an **AI pipeline** — data contract, training, evaluation, calibration, explanation, serving and a retraining loop — not an end-user application. The Streamlit dashboard exists only to demonstrate the pipeline.
 
