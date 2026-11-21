@@ -66,9 +66,9 @@ Everything the dashboard's model card page needs, read from `model_card.json`. N
   "grade_bands": {"A": {"min_score": 76}, "B": {"min_score": 26}, "C": {"min_score": 0}},
   "limits": ["Scores one public dataset of 9,240 leads...", "..."]
 }
+```
 
 Every value above is read from `models/model_card.json`. The `algorithm` string says what was actually done: on the shipped model no calibrator was applied, because none improved out-of-fold Brier (D-020). The grade bands are the cut-offs that run produced — the API never hardcodes them, which is what lets a retrain move them without a code change.
-```
 
 ---
 

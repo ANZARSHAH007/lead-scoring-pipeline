@@ -102,6 +102,23 @@ It needs the Kaggle token as a repo secret (A-11), in a **public** repo. GitHub 
 **Options:** (a) create it in the browser, then `git remote add` — no install; (b) install the GitHub CLI.
 **Still owner action.** The local repo is initialised and committed (`872d629`); create `lead-scoring-pipeline` as a **public** repo on GitHub, then `git remote add origin <url>` and `git push -u origin main`.
 
+### OQ-13 — Should the prediction log enforce its own `CHECK` constraints?
+docs/06 was written with four `CHECK` constraints (`score` 0–100, `probability` 0–1, `grade`
+in A/B/C, `converted` in 0/1). `store.py` never implemented them, and T-703 found the gap on
+2026-11-21.
+**The case for adding them:** the database stops depending on the application being correct.
+If a future model, a migration or a direct `sqlite3` session writes a score of 137, the table
+refuses it instead of storing it and letting it surface later as a wrong number in a report.
+**The case against:** the log write happens on the request path. A constraint violation would
+turn a logging failure into a failed *scoring* request — the caller loses a score because the
+audit trail objected. That trade has to be deliberate, and it would need the write wrapped so
+a rejected log row is recorded and swallowed rather than raised.
+**Also note:** SQLite cannot add a `CHECK` to an existing table. Adoption means new databases
+only, or a table rebuild. The log is git-ignored and disposable, so in practice this is
+cheap now and expensive later.
+**Blocks:** nothing. **Recommendation:** add them, with the log write wrapped so a rejected
+row is logged and never raised to the caller. **Owner decision needed.**
+
 ### OQ-12 — Who is the "friend" for the T-701 README run-through?
 The Phase-1 gate in the roadmap requires someone else to run the repo unaided. Needs a real person named before 2026-11-29. **Owner action.**
 

@@ -50,38 +50,42 @@ Derived files in `data/interim/` and `data/processed/` are also git-ignored; not
 
 **Purpose:** make the pipeline measurable once it is serving, and collect real outcomes that become future training rows.
 
+**This is the schema that runs.** Copied from `src/leadscore/api/store.py`, which is the
+only place it is defined; `tests/test_api.py` asserts against the live table. Reconciled with
+the code on 2026-11-21 (T-703) — it had drifted, and the differences are listed under the
+design notes.
+
 ```sql
 -- every lead scored, one row per lead per call
 CREATE TABLE IF NOT EXISTS predictions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     prospect_id     TEXT    NOT NULL,
-    scored_at       TEXT    NOT NULL,              -- ISO 8601, UTC
-    model_version   TEXT    NOT NULL,              -- e.g. lgbm-2026-11-26
-    score           INTEGER NOT NULL CHECK (score BETWEEN 0 AND 100),
-    probability     REAL    NOT NULL CHECK (probability BETWEEN 0 AND 1),
-    grade           TEXT    NOT NULL CHECK (grade IN ('A','B','C')),
+    request_id      TEXT,                          -- groups a batch call together
+    scored_at       TEXT    NOT NULL,              -- ISO 8601, UTC, milliseconds
+    model_version   TEXT    NOT NULL,              -- e.g. 20261118-6ae06cc8
+    score           INTEGER NOT NULL,
+    probability     REAL    NOT NULL,
+    grade           TEXT    NOT NULL,
     reasons_json    TEXT    NOT NULL,              -- the 3 reasons as returned
     input_json      TEXT    NOT NULL,              -- the validated request payload
-    latency_ms      INTEGER NOT NULL,
-    request_id      TEXT                           -- groups a batch call together
+    latency_ms      REAL    NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_pred_prospect ON predictions (prospect_id);
-CREATE INDEX IF NOT EXISTS idx_pred_scored_at ON predictions (scored_at);
-CREATE INDEX IF NOT EXISTS idx_pred_model ON predictions (model_version);
-
--- outcomes arriving later, from POST /feedback
+-- Feedback is a separate table rather than a nullable column on `predictions`: an outcome
+-- arrives later, from a different caller, and may never arrive at all.
 CREATE TABLE IF NOT EXISTS feedback (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    prediction_id   INTEGER NOT NULL REFERENCES predictions(id),
     prospect_id     TEXT    NOT NULL,
-    converted       INTEGER NOT NULL CHECK (converted IN (0, 1)),
-    reported_at     TEXT    NOT NULL,              -- ISO 8601, UTC
+    converted       INTEGER NOT NULL,
     note            TEXT,
-    prediction_id   INTEGER REFERENCES predictions (id)
+    recorded_at     TEXT    NOT NULL,              -- ISO 8601, UTC, milliseconds
+    UNIQUE (prediction_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_fb_prospect ON feedback (prospect_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_fb_once ON feedback (prospect_id, prediction_id);
+CREATE INDEX IF NOT EXISTS idx_predictions_prospect ON predictions(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_predictions_scored_at ON predictions(scored_at);
+CREATE INDEX IF NOT EXISTS idx_predictions_request ON predictions(request_id);
 ```
 
 Design notes, with reasons:
@@ -89,6 +93,25 @@ Design notes, with reasons:
 - **Two tables, not one.** A score is a fact at a point in time; an outcome arrives later and may never arrive. Keeping them apart means feedback never rewrites history, and live accuracy is an explicit join.
 - **`input_json` stored whole**, not as 20 columns. The admissible feature list will change between model versions; a JSON blob survives that, and the schema does not need migrating every time the model does.
 - **`model_version` on every row.** Accuracy is only meaningful per model. Without this column the log is unusable the moment a second model ships.
+- **Where this differs from the Phase-0 design, and why (T-703, 2026-11-21).** The design
+  above was written before the API existed; the code then went its own way in five places,
+  and writing them down is the point of this reconciliation rather than quietly editing the
+  doc to match.
+  - `reported_at` became **`recorded_at`**. A rename with no reason behind it; the code's name
+    is now the one, because the code is what runs.
+  - `latency_ms` is **`REAL`, not `INTEGER`**. Scoring a single lead takes well under a
+    millisecond, and an integer column rounded most measurements to 0 or 1. The code is right.
+  - `feedback.prediction_id` is **`NOT NULL`** with a table-level **`UNIQUE`**, rather than
+    nullable with a unique index on `(prospect_id, prediction_id)`. Feedback the service
+    cannot attach to a specific prediction cannot be used to measure that prediction, so
+    requiring it is correct, and one outcome per prediction is the rule the API enforces.
+  - The **`model_version` index was never created**, and `request_id` got one instead. The
+    index that exists matches what the code actually queries by; the one that does not is
+    worth adding the first time two model versions are live at once.
+  - **The four `CHECK` constraints were never written.** This is the one real loss: `score`
+    between 0 and 100, `probability` between 0 and 1, `grade` in `('A','B','C')`, `converted`
+    in `(0,1)`. The API validates all four before it writes, so nothing invalid reaches the
+    table today — but that is defence in one layer rather than two. **Open: OQ-13.**
 - **Timestamps are ISO 8601 UTC strings.** SQLite has no datetime type; text in a fixed format sorts correctly and is unambiguous across machines. See OQ-6 on display timezone.
 - **`UNIQUE (prospect_id, prediction_id)`** stops the same outcome being reported twice and double-counting in live accuracy.
 - **Latency stored per request** so NFR-1's p95 is measured from real traffic, not a benchmark.
