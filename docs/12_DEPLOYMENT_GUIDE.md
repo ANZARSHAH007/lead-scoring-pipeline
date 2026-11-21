@@ -70,7 +70,7 @@ Without Docker (current state of this machine — see OQ-3): `make serve` runs U
 **[written]** `.github/workflows/ci.yml` — in the repo, never executed; the first push is what makes it real. Two jobs:
 
 - **`check`, every push and pull request, no secrets:** install from `requirements.lock` → `scripts/doctor.py` → `ruff` → `pytest` (synthetic fixture only, no dataset needed) → train a throwaway fixture model so the image has one → `docker build` → start the container, poll `/health`, **score a lead through it**, and warn if the image exceeds the 1.5 GB target (NFR-5)
-- **`model`, pushes to `main` only:** download the dataset with `KAGGLE_API_TOKEN` → `scripts/check_data.py` → `python -m leadscore.train`, which opens the test set once and runs the quality gate → `publish_results.py --check` so a stale README fails the build → upload the model, its card and report 04 as artifacts for 30 days
+- **`model`, pushes to `main` only:** download the dataset with `KAGGLE_API_TOKEN` → `scripts/check_data.py` → `python -m leadscore.train` → `publish_results.py --drift` (the retrained numbers against the published ones, with a documented tolerance — not `--check`, which compares a dated version string, D-033), which opens the test set once and runs the quality gate → `publish_results.py --check` so a stale README fails the build → upload the model, its card and report 04 as artifacts for 30 days
 
 **The owner must add those two secrets** (Settings → Secrets and variables → Actions). Until then the `model` job fails with a message naming them, which is deliberate: skipping silently would make a green tick mean less than it appears to (OQ-10).
 

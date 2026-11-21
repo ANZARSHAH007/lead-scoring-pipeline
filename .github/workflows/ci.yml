@@ -242,10 +242,18 @@ jobs:
       - name: Train, evaluate once, and run the quality gate
         run: python -m leadscore.train
 
-      - name: Check the README still matches the card
-        run: python scripts/publish_results.py --check
+      # NOT `--check`. CI retrains from scratch and `model_version` is date-stamped, so a
+      # fresh card can never equal a README committed on an earlier day - run #3 failed here
+      # for that reason alone, having said nothing about the model (D-033). `--drift`
+      # compares the numbers with a tolerance, and holds the test-set fingerprint to an
+      # exact match, because that is what says the held-out rows did not move.
+      - name: Retrained numbers still match the published ones
+        run: python scripts/publish_results.py --drift
 
+      # `always()`: the card is most worth having on the run where something disagreed. An
+      # artifact you only get when everything passed cannot help you diagnose anything.
       - name: Upload the model and its card
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: model-${{ github.sha }}

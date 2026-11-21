@@ -585,6 +585,44 @@ The pattern across D-031 and D-032 is the same: the Python-level check (a lockfi
 suite) passed, and the thing that broke was one layer below it. Each failure was only
 findable by running the artifact that ships, not the one in the working tree.
 
+### D-033 - CI cannot ask for a byte-identical README; it can ask for the same numbers
+
+**Date** 2026-11-20 - **Status** accepted
+
+Run #3 was the first good one. The `check` job went fully green: the image built in 122 s,
+the imports step passed, the container answered `/health` in **4 seconds**, a lead was scored
+through it, and the image size was reported. The `model` job then ran for the first time -
+the Kaggle token worked, `check_data.py` passed, and the retrain and the quality gate
+**both passed** in 117 s. One step failed, and it was the wrong step to have written.
+
+`publish_results.py --check` asks whether the README is byte-identical to what the current
+model card generates. That is the right question on the owner's machine, where the README and
+the card come from the same run. It is the wrong question in CI, because `model_version` is
+`f"{date}-{hash}"` by design (D-012): a retrain on any later day produces a different version
+string, the README cannot match it, and the step fails no matter how good the model is. It
+also printed nothing but "README does not match", so a red build said nothing about the
+model - the worst property a check can have.
+
+**What CI actually wants to know after a retrain:** did the numbers move? `--drift` answers
+that, and draws three distinctions:
+
+* a **new model version** is expected on every retrain and is ignored;
+* a **metric** may move by up to `DRIFT_TOLERANCE` (0.02 absolute), which is slack for a
+  different OS and thread count, not for a different model;
+* the **test-set fingerprint** must be identical. Every published figure is measured on those
+  1,848 rows; if the fingerprint moved, the rows moved, and nothing in the README means what
+  it says. This is the one comparison with no tolerance at all.
+
+Verified against three hand-built cards before trusting it: a CI-shaped retrain (new date,
+last-decimal jitter) passes; a model whose Capture@20% fell to 38.0% fails and names the
+number; a changed fingerprint fails and says why. `tests/test_publish_results.py` holds
+fourteen cases, and writing them found a real bug - the first version read the digits inside
+the fingerprint as measurements.
+
+The artifact upload is now `if: always()`. The card is most worth having on the run where
+something disagreed, and an artifact that only appears when everything passed cannot help
+diagnose anything.
+
 ### Next decision
 ---
 
