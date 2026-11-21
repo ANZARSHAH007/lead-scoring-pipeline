@@ -183,8 +183,38 @@ h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }
 }}
 .grade-chip:hover {{ transform: scale(1.06); }}
 .reason {{
-  border-left: 3px solid {ACCENT}; padding: 2px 0 2px 10px; margin: 6px 0;
-  color: {BODY_INK};
+  border-left: 3px solid {BORDER}; padding: var(--space-sm) 0 var(--space-sm) var(--space-lg);
+  margin: var(--space-md) 0; color: {BODY_INK};
+}}
+/* The direction is carried by the arrow *and* the edge colour, never by colour alone. */
+.reason.up {{ border-left-color: {PRIMARY}; }}
+.reason.down {{ border-left-color: {ACCENT}; }}
+.reason-arrow {{ font-weight: 700; margin-right: var(--space-md); }}
+.reason.up .reason-arrow {{ color: {PRIMARY}; }}
+.reason.down .reason-arrow {{ color: {ACCENT}; }}
+.reason-feature {{ color: {MUTED_INK}; font-family: 'Fira Code', monospace; font-size: 0.78rem; }}
+
+/* A card can carry its grade on its left edge without the colour being the only cue - the
+   letter is always printed beside it. */
+.kpi.accent {{ border-left: 4px solid var(--accent, {PRIMARY}); }}
+
+/* The score meter: where one lead sits on 0-100, with the grade cut-offs marked. A number
+   on its own does not say whether 62 is good. */
+.meter {{
+  position: relative; height: 10px; border-radius: 999px;
+  background: {MUTED}; margin: var(--space-lg) 0 var(--space-md);
+}}
+.meter-fill {{
+  position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px;
+  background: {PRIMARY}; transition: width 320ms ease;
+}}
+.meter-tick {{
+  position: absolute; top: -4px; bottom: -4px; width: 2px; background: {MUTED_INK};
+  opacity: 0.55;
+}}
+.meter-scale {{
+  display: flex; justify-content: space-between;
+  font-family: 'Fira Code', monospace; font-size: 0.7rem; color: {MUTED_INK};
 }}
 
 /* Motion is decoration, so it is small, fast and skippable. Cards rise 6px once on arrival
@@ -231,11 +261,15 @@ h1, h2, h3 {{ font-family: 'Fira Code', ui-monospace, monospace; color: {INK}; }
 /* A small caps rule between bands of the page. The data-dense dashboard pattern asks for
    several widgets per screen with minimal padding; without a label per band that reads as
    clutter rather than structure. */
-.section {{
-  font-family: 'Fira Code', monospace; font-size: 0.72rem; letter-spacing: 0.08em;
+/* Band labels are real `h3` headings, not styled `<div>`s. A div looks identical and
+   throws away the page's heading outline - what a screen reader navigates by, and what the
+   render tests read. The same mistake was made once with the page title and corrected the
+   same way (D-035). */
+.stApp h3 {{
+  font-family: 'Fira Code', monospace; font-size: 0.72rem !important; letter-spacing: 0.08em;
   text-transform: uppercase; color: {MUTED_INK};
   margin: var(--space-3xl) 0 var(--space-lg); padding-bottom: var(--space-md);
-  border-bottom: 1px solid {BORDER};
+  border-bottom: 1px solid {BORDER}; font-weight: 600;
 }}
 
 /* Density. Streamlit's defaults are built for a wide marketing page; a dashboard wants the
@@ -290,10 +324,32 @@ def _grade_chip(grade: str) -> str:
     )
 
 
-def _kpi(label: str, value: str) -> str:
+def _kpi(label: str, value: str, accent: str | None = None) -> str:
+    """One stat card. `accent` adds a coloured left edge - never the only cue, since the
+    label beside it always says what the card is."""
+    classes = "kpi accent" if accent else "kpi"
+    style = f' style="--accent:{accent}"' if accent else ""
     return (
-        f'<div class="kpi"><div class="kpi-value">{value}</div>'
+        f'<div class="{classes}"{style}><div class="kpi-value">{value}</div>'
         f'<div class="kpi-label">{label}</div></div>'
+    )
+
+
+def _meter(score: int, a_from: int, b_from: int) -> str:
+    """Where this score sits on 0-100, with the two grade cut-offs marked.
+
+    A bare number does not tell a reader whether 62 is good; the cut-offs are what make it
+    mean something, and they come from the model card rather than from a constant here.
+    """
+    ticks = "".join(
+        f'<div class="meter-tick" style="left:{max(0, min(100, cut))}%"></div>'
+        for cut in (b_from, a_from)
+    )
+    return (
+        f'<div class="meter"><div class="meter-fill" style="width:{max(0, min(100, score))}%">'
+        f"</div>{ticks}</div>"
+        f'<div class="meter-scale"><span>0</span><span>C | B  {b_from}</span>'
+        f"<span>B | A  {a_from}</span><span>100</span></div>"
     )
 
 
@@ -435,17 +491,11 @@ def page_rank_leads(base_url: str, max_batch: int) -> None:
             _service_down(error)
             return
 
-        st.markdown(
-            '<div class="section">Measured on held-out leads</div>',
-            unsafe_allow_html=True,
-        )
+        st.subheader("Measured on held-out leads")
         _headline(info)
         _capture_chart(info)
 
-        st.markdown(
-            '<div class="section">Score your own leads</div>',
-            unsafe_allow_html=True,
-        )
+        st.subheader("Score your own leads")
         left, right = st.columns([3, 2])
         with left:
             st.markdown(
@@ -507,18 +557,36 @@ def page_rank_leads(base_url: str, max_batch: int) -> None:
     results = client.results_to_frame(body["results"])
     counts = results["grade"].value_counts()
 
+    st.subheader("Results")
     columns = st.columns(4)
     with columns[0]:
         st.markdown(_kpi("leads scored", f"{len(results):,}"), unsafe_allow_html=True)
     for index, grade in enumerate("ABC", start=1):
+        total = int(counts.get(grade, 0))
+        share = f"{total / len(results):.0%}" if len(results) else "0%"
         with columns[index]:
             st.markdown(
-                _kpi(f"grade {grade}", f"{int(counts.get(grade, 0)):,}"), unsafe_allow_html=True
+                _kpi(
+                    f"grade {grade} - {share} of the file",
+                    f"{total:,}",
+                    accent=GRADE_STYLE.get(grade, (MUTED, MUTED_INK))[0],
+                ),
+                unsafe_allow_html=True,
             )
 
-    st.markdown("")
-    only_a = st.checkbox("Show grade A only", value=False)
+    # A toolbar, not two controls stranded on separate rows: the filter that changes what
+    # the table shows sits on the same line as the button that exports what it shows.
+    left, right = st.columns([3, 1])
+    with left:
+        only_a = st.checkbox("Show grade A only", value=False)
     shown = results[results["grade"] == "A"] if only_a else results
+    with right:
+        st.download_button(
+            "Download ranked CSV",
+            data=shown.to_csv(index=False),
+            file_name="ranked_leads.csv",
+            mime="text/csv",
+        )
 
     st.dataframe(
         shown,
@@ -532,11 +600,9 @@ def page_rank_leads(base_url: str, max_batch: int) -> None:
         },
     )
 
-    st.download_button(
-        "Download the ranked CSV",
-        data=shown.to_csv(index=False),
-        file_name="ranked_leads.csv",
-        mime="text/csv",
+    st.caption(
+        f"{len(shown):,} row(s) shown, highest score first. Scores use only what is known "
+        "when a lead arrives."
     )
 
 
@@ -638,27 +704,43 @@ def page_try_one_lead(base_url: str) -> None:
         return
 
     score = int(body["score"])
-    columns = st.columns([1, 1, 2])
+    grade = body["grade"]
+    accent = GRADE_STYLE.get(grade, (MUTED, MUTED_INK))[0]
+
+    st.subheader("This lead")
+    columns = st.columns(3)
     with columns[0]:
-        st.markdown(_kpi("score out of 100", str(score)), unsafe_allow_html=True)
+        st.markdown(_kpi("score out of 100", str(score), accent=accent), unsafe_allow_html=True)
     with columns[1]:
         st.markdown(
-            _kpi("probability", f"{float(body['probability']):.1%}"), unsafe_allow_html=True
+            _kpi("probability of converting", f"{float(body['probability']):.1%}"),
+            unsafe_allow_html=True,
         )
     with columns[2]:
         st.markdown(
-            f'<div class="kpi">{_grade_chip(body["grade"])}'
-            f'<div class="kpi-label" style="margin-top:8px">grade, from the cut-offs in the '
-            "model card</div></div>",
+            f'<div class="kpi accent" style="--accent:{accent}">'
+            f'<div class="kpi-value">{_grade_chip(grade)}</div>'
+            f'<div class="kpi-label">grade, from the model card cut-offs</div></div>',
             unsafe_allow_html=True,
         )
 
+    # The cut-offs are what make the number mean something, and they come from the card.
+    try:
+        bands = (_model_info(base_url).get("grade_bands") or {})
+        a_from = int((bands.get("A") or {}).get("min_score", 80))
+        b_from = int((bands.get("B") or {}).get("min_score", 50))
+        st.markdown(_meter(score, a_from, b_from), unsafe_allow_html=True)
+    except client.ApiUnreachable:
+        pass  # the score is already shown; the meter is context, not the answer
+
     st.subheader("Why")
     for reason in body["reasons"]:
-        arrow = "&uarr;" if reason["direction"] == "up" else "&darr;"
+        up = reason["direction"] == "up"
         st.markdown(
-            f'<div class="reason">{arrow} {reason["text"]} '
-            f'<span style="color:{MUTED_INK}">({reason["feature"]})</span></div>',
+            f'<div class="reason {"up" if up else "down"}">'
+            f'<span class="reason-arrow">{"&uarr;" if up else "&darr;"}</span>'
+            f'{reason["text"]} '
+            f'<span class="reason-feature">{reason["feature"]}</span></div>',
             unsafe_allow_html=True,
         )
     st.caption(
@@ -718,20 +800,25 @@ def page_model_card(base_url: str) -> None:
     )
 
     st.subheader("Against the baselines")
+    _capture_chart(info)  # the same chart as the landing page: one claim, told once
+
     baselines = info.get("baselines", {})
     rows = [
         {
             "model": "the shipped model",
             "ROC-AUC": float(metrics.get("roc_auc", 0.0)),
-            "Capture@20%": float(metrics.get("capture_at_20", 0.0)),
+            # Stored as a percentage, not a fraction. `format="%.1f%%"` appends a per-cent
+            # sign without scaling, so a fraction of 0.441 rendered as "0.4%" - the headline
+            # number of the whole project, shown two orders of magnitude wrong.
+            "Capture@20%": float(metrics.get("capture_at_20", 0.0)) * 100,
         }
     ]
     for name, values in baselines.items():
         rows.append(
             {
-                "model": name.replace("_", " "),
+                "model": BASELINE_LABELS.get(name, name.replace("_", " ")),
                 "ROC-AUC": float(values.get("roc_auc", 0.0)),
-                "Capture@20%": float(values.get("capture_at_20", 0.0)),
+                "Capture@20%": float(values.get("capture_at_20", 0.0)) * 100,
             }
         )
     st.dataframe(
@@ -750,16 +837,18 @@ def page_model_card(base_url: str) -> None:
 
     st.subheader("Grades")
     bands = info.get("grade_bands", {})
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {"grade": grade, "score from": int(bands.get(grade, {}).get("min_score", 0))}
-                for grade in ("A", "B", "C")
-            ]
-        ),
-        hide_index=True,
-        width="stretch",
-    )
+    cuts = {g: int((bands.get(g) or {}).get("min_score", 0)) for g in ("A", "B", "C")}
+    ranges = {"A": f"{cuts['A']}-100", "B": f"{cuts['B']}-{cuts['A'] - 1}", "C": f"0-{cuts['B'] - 1}"}
+    shares = {"A": "top 20%", "B": "next 30%", "C": "the rest"}
+    for column, grade in zip(st.columns(3), ("A", "B", "C"), strict=True):
+        with column:
+            st.markdown(
+                f'<div class="kpi accent" style="--accent:{GRADE_STYLE[grade][0]}">'
+                f'<div class="kpi-value">{_grade_chip(grade)} '
+                f'<span style="font-size:1.1rem">{ranges[grade]}</span></div>'
+                f'<div class="kpi-label">{shares[grade]}</div></div>',
+                unsafe_allow_html=True,
+            )
     st.caption(
         "Cut-offs were set on validation data and stored in the model card. This page reads "
         "them; it does not know them."

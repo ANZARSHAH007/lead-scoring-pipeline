@@ -1,6 +1,6 @@
 # 04 - Evaluation, calibration and the quality gate
 
-Model version `20261118-6ae06cc8`, written by `python -m leadscore.train`.
+Model version `20261121-6ae06cc8`, written by `python -m leadscore.train`.
 
 ## The headline
 

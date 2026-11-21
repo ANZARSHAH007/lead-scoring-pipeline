@@ -781,6 +781,27 @@ One layout bug went with it: the sample-download button was stretched to its ful
 it sat on a different baseline from the text beside it and read as a banner rather than a
 control. A button is sized by its label.
 
+**Carrying the pass through the other two pages turned up a correctness bug, not a styling
+one.** The model card's baseline table formatted Capture@20% with `"%.1f%%"`, which appends a
+per-cent sign without scaling the value. The API returns a fraction, so **0.441 rendered as
+"0.4%"** - the headline number of the entire project, shown two orders of magnitude wrong, on
+the one page whose whole job is to report the model honestly. Nobody caught it because the
+number looked plausible as a formatting quirk rather than as a falsehood. Values are scaled
+before they reach the column format, and a test now asserts the shipped model's capture lands
+between 40 and 50 rather than near zero.
+
+The rest of that pass: grade bands became three cards showing their actual score ranges
+instead of a three-row table; the baseline comparison chart from the landing page is reused
+here, so the project's one claim is told the same way in both places; a single lead's score
+now carries a meter showing where it sits between the grade cut-offs, because a bare 62 does
+not tell a reader whether 62 is good; and reasons carry their direction in the arrow *and*
+the edge colour, never colour alone.
+
+Band labels are real `st.subheader` headings rather than styled `<div>`s. A div looks
+identical and throws away the heading outline a screen reader navigates by - the same mistake
+made once with the page title earlier in the day, caught both times by a render test that
+reads the real element.
+
 ### Next decision
 ---
 

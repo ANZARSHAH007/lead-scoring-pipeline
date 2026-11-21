@@ -13,7 +13,7 @@ This is project P1 of a seven-project AI-engineering portfolio. The deliverable 
 <!-- headline:start -->
 > If sales calls only the top 20% of scored leads, they reach **44.1%** of all conversions.
 
-Measured once on 1,848 held-out leads the model never saw (fingerprint `e30abe9c3fe596c1`), by model version `20261118-6ae06cc8`. Quality gate: **passed**.
+Measured once on 1,848 held-out leads the model never saw (fingerprint `e30abe9c3fe596c1`), by model version `20261121-6ae06cc8`. Quality gate: **passed**.
 <!-- headline:end -->
 
 **Capture@20%** is the headline metric, and every other metric supports it. The block above is generated from `models/model_card.json` by `scripts/publish_results.py`, so the README and the card cannot disagree.

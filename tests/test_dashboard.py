@@ -403,7 +403,9 @@ def test_submitting_the_form_shows_a_score_and_three_reasons(app_test, stub_api)
     app_test.button[0].click().run()
 
     assert not app_test.exception, app_test.exception
-    assert [element.value for element in app_test.subheader] == ["Why"]
+    # Real headings, not styled divs: the page keeps an outline a screen reader can
+    # navigate (D-037). The score band comes first, then the explanation.
+    assert [element.value for element in app_test.subheader] == ["This lead", "Why"]
     drawn = " ".join(str(element.value) for element in app_test.markdown)
     assert "92" in drawn
     for reason in FAKE_SCORE["reasons"]:
@@ -523,3 +525,31 @@ def test_every_page_icon_is_a_real_material_symbol() -> None:
 def test_every_page_is_named_in_words_not_only_by_its_icon() -> None:
     """The icon is decoration. Remove it and the nav must still say what each page is."""
     assert set(app.PAGE_ICONS) == set(app.PAGES)
+
+
+def test_the_model_card_shows_capture_as_a_real_percentage(app_test, stub_api) -> None:
+    """A fraction formatted with "%.1f%%" renders 0.441 as "0.4%" (D-037).
+
+    That is the project's headline number shown two orders of magnitude wrong, on the page
+    whose entire job is to report the model honestly. The value is scaled before it reaches
+    the column format.
+    """
+    app_test.run()
+    app_test.sidebar.radio[0].set_value("Model card").run()
+    assert not app_test.exception, app_test.exception
+
+    frames = [element.value for element in app_test.dataframe]
+    assert frames, "the baseline table is missing"
+    table = frames[0]
+    shipped = table[table["model"] == "the shipped model"].iloc[0]
+    assert 40 < shipped["Capture@20%"] < 50, (
+        f"capture is {shipped['Capture@20%']}, which is a fraction rather than a percentage"
+    )
+
+
+def test_the_grade_bands_cover_every_score_without_a_gap(app_test, stub_api) -> None:
+    """A band table that reads 76-100 / 26-75 / 0-25 is only right if it has no holes."""
+    bands = FAKE_INFO["grade_bands"]
+    a, b = bands["A"]["min_score"], bands["B"]["min_score"]
+    assert a > b > 0, "the cut-offs must be ordered and leave a C band"
+    assert (a - 1) >= b, "B's range would be empty"
